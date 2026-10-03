@@ -121,6 +121,14 @@ func (a *ChatProviderAdapter) FromCoreRequest(ctx context.Context, req *format.C
 	if len(req.Tools) > 0 {
 		chatReq.Tools = make([]ChatTool, 0, len(req.Tools))
 		for _, t := range req.Tools {
+			// Skip client-native web search tools (e.g. Codex's `web_search`):
+			// chat-completions upstreams cannot execute them. Mistral reserves
+			// the `web_search` tool name and rejects a function tool carrying it
+			// with a 422; OpenAI requires `parameters`, which these tools lack.
+			// Injected search mode replaces them with tavily_search/firecrawl_fetch.
+			if t.Name == "web_search" || t.Name == "web_search_preview" {
+				continue
+			}
 			chatReq.Tools = append(chatReq.Tools, ChatTool{
 				Type: "function",
 				Function: FunctionDef{
