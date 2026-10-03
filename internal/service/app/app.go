@@ -415,13 +415,23 @@ func resolvePerProviderWebSearch(ctx context.Context, cfg config.Config, pm *pro
 				slog.Info("已启用响应端网页搜索", "provider", key, "protocol", protocol)
 			}
 		default:
-			// openai-chat 和 google-genai 无原生 web_search，有 API key 时启用注入模式
-			if cfg.TavilyAPIKey != "" {
-				pm.SetResolvedWebSearch(key, "injected")
-				slog.Info("注入式网页搜索已启用", "provider", key, "protocol", protocol)
-			} else {
+			// openai-chat 和 google-genai 无原生 web_search：尊重显式配置；
+			// 未显式配置时，有全局 Tavily key 则启用注入模式，否则禁用。
+			switch support {
+			case config.WebSearchSupportDisabled:
 				pm.SetResolvedWebSearch(key, "disabled")
-				slog.Info("跳过网页搜索：无 Tavily API key", "provider", key, "protocol", protocol)
+				slog.Info("配置禁用网页搜索", "provider", key, "protocol", protocol)
+			case config.WebSearchSupportInjected:
+				pm.SetResolvedWebSearch(key, "injected")
+				slog.Info("配置启用网页搜索注入模式", "provider", key, "protocol", protocol)
+			default:
+				if cfg.TavilyAPIKey != "" {
+					pm.SetResolvedWebSearch(key, "injected")
+					slog.Info("注入式网页搜索已启用", "provider", key, "protocol", protocol)
+				} else {
+					pm.SetResolvedWebSearch(key, "disabled")
+					slog.Info("跳过网页搜索：无 Tavily API key", "provider", key, "protocol", protocol)
+				}
 			}
 		}
 	}
@@ -469,9 +479,22 @@ func resolveModelWebSearch(ctx context.Context, alias, providerKey, upstreamMode
 		}
 		return
 	default:
-		pm.SetResolvedWebSearch(modelKey, "disabled")
-		pm.SetResolvedWebSearch(candidateKey, "disabled")
-		slog.Info("跳过模型级网页搜索：不支持的协议", "model", alias, "protocol", protocol)
+		// openai-chat 和 google-genai 无原生 web_search：尊重显式的模型级
+		// disabled/injected 配置，其余情况禁用（注入模式由 provider 级回退处理）。
+		switch modelWS {
+		case config.WebSearchSupportDisabled:
+			pm.SetResolvedWebSearch(modelKey, "disabled")
+			pm.SetResolvedWebSearch(candidateKey, "disabled")
+			slog.Info("模型配置禁用网页搜索", "model", alias, "protocol", protocol)
+		case config.WebSearchSupportInjected:
+			pm.SetResolvedWebSearch(modelKey, "injected")
+			pm.SetResolvedWebSearch(candidateKey, "injected")
+			slog.Info("模型配置启用网页搜索注入模式", "model", alias, "protocol", protocol)
+		default:
+			pm.SetResolvedWebSearch(modelKey, "disabled")
+			pm.SetResolvedWebSearch(candidateKey, "disabled")
+			slog.Info("跳过模型级网页搜索：不支持的协议", "model", alias, "protocol", protocol)
+		}
 		return
 	}
 	switch modelWS {
