@@ -356,7 +356,7 @@ func (s *Server) handleWithAdapters(
 
 		// Prepend cached reasoning for DeepSeek thinking chain replay.
 		if s.pluginRegistry != nil && sess != nil {
-			prependCachedReasoningForChat(chatReq, sess)
+			prependCachedReasoningForChat(chatReq, sess, preferred.ProviderKey == "deepseek")
 		}
 
 		if openAIReq.Stream {
@@ -411,7 +411,7 @@ func (s *Server) handleWithAdapters(
 				return nil, fmt.Errorf("finalizeChatUpstream: expected *chat.ChatRequest, got %T", upstream)
 			}
 			if s.pluginRegistry != nil && sess != nil {
-				prependCachedReasoningForChat(req, sess)
+				prependCachedReasoningForChat(req, sess, preferred.ProviderKey == "deepseek")
 			}
 			return req, nil
 		}
@@ -1167,7 +1167,7 @@ func (s *Server) handleAdapterStream(
 
 		// Prepend cached reasoning for DeepSeek thinking chain replay.
 		if s.pluginRegistry != nil && sess != nil {
-			prependCachedReasoningForChat(chatReq, sess)
+			prependCachedReasoningForChat(chatReq, sess, candidate.ProviderKey == "deepseek")
 		}
 
 		chatClientRaw := s.activeChatClient(candidate.ProviderKey)
@@ -1222,7 +1222,7 @@ func (s *Server) handleAdapterStream(
 						return nil, fmt.Errorf("chat visual finalize: expected *chat.ChatRequest, got %T", upstream)
 					}
 					if s.pluginRegistry != nil && sess != nil {
-						prependCachedReasoningForChat(req, sess)
+						prependCachedReasoningForChat(req, sess, candidate.ProviderKey == "deepseek")
 					}
 					return req, nil
 				}
@@ -2713,7 +2713,7 @@ func hasThinkingBlock(content []anthropic.ContentBlock) bool {
 //
 // For the Chat protocol path, this is the equivalent of prependCachedThinking
 // (which operates on Anthropic messages).
-func prependCachedReasoningForChat(chatReq *chat.ChatRequest, sess *session.Session) {
+func prependCachedReasoningForChat(chatReq *chat.ChatRequest, sess *session.Session, emitEmpty bool) {
 	// Session may be nil or missing ExtensionData (e.g., session resume after restart).
 	// In that case, we still set reasoning_content to empty string — DeepSeek needs
 	// the field present on every assistant message, even if empty.
@@ -2752,8 +2752,10 @@ func prependCachedReasoningForChat(chatReq *chat.ChatRequest, sess *session.Sess
 			}
 		}
 		// Fallback: set empty reasoning_content to satisfy DeepSeek's requirement
-		// that the field is present on every assistant message.
-		if msg.ReasoningContent == "" && len(msg.ToolCalls) > 0 {
+		// that the field is present on every assistant message. Only providers
+		// that actually require it (DeepSeek) tolerate the extra field; Mistral
+		// rejects `reasoning_content` on input messages with a 422.
+		if emitEmpty && msg.ReasoningContent == "" && len(msg.ToolCalls) > 0 {
 			msg.ReasoningContent = ""
 			msg.EmitEmptyReasoningContent = true
 		}
