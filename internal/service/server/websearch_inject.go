@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"log/slog"
+	"moonbridge/internal/extension/visual"
 	"moonbridge/internal/extension/websearch"
+	"moonbridge/internal/format"
 	"moonbridge/internal/protocol/chat"
 	"moonbridge/internal/protocol/google"
 	openai "moonbridge/internal/protocol/openai"
@@ -25,6 +27,171 @@ func hasWebSearchTool(req openai.ResponsesRequest) bool {
 		}
 	}
 	return false
+}
+
+// executeCoreSearchLoop executes injected web-search tool calls
+// (tavily_search / firecrawl_fetch) on a Core-level provider. It is used on
+// the visual-orchestrator path, which bypasses the protocol-specific search
+// loops (executeChatSearchLoop / chatSearchBufferedStream): without it, the
+// model's search tool calls would be forwarded to the client, which cannot
+// execute them.
+//
+// When the response mixes search and non-search tool calls, the search calls
+// are executed as a side effect and the response is returned so the client
+// can handle the remaining calls (mirroring executeChatSearchLoop).
+func executeCoreSearchLoop(
+	ctx context.Context,
+	prov visual.CoreProvider,
+	req *format.CoreRequest,
+	resp *format.CoreResponse,
+	tavilyKey, firecrawlKey string,
+	maxRounds int,
+) (*format.CoreResponse, error) {
+	log := slog.Default()
+	tavily := websearch.NewTavilyClient(tavilyKey)
+	var firecrawl *websearch.FirecrawlClient
+	if firecrawlKey != "" {
+		firecrawl = websearch.NewFirecrawlClient(firecrawlKey)
+	}
+	if maxRounds <= 0 {
+		maxRounds = 3
+	}
+
+	for round := 0; round < maxRounds; round++ {
+		var last *format.CoreMessage
+		for i := range resp.Messages {
+			if resp.Messages[i].Role == "assistant" {
+				last = &resp.Messages[i]
+			}
+		}
+		if last == nil {
+			return resp, nil
+		}
+
+		var searchUses []format.CoreContentBlock
+		hasNonSearch := false
+		for _, b := range last.Content {
+			if b.Type != "tool_use" {
+				continue
+			}
+			switch b.ToolName {
+			case "tavily_search", "firecrawl_fetch", "web_search", "web_search_preview":
+				searchUses = append(searchUses, b)
+			default:
+				hasNonSearch = true
+			}
+		}
+		if len(searchUses) == 0 {
+			return resp, nil
+		}
+
+		// Execute search calls.
+		var toolResults []format.CoreContentBlock
+		for _, use := range searchUses {
+			result, execErr := executeCoreSearchCall(ctx, tavily, firecrawl, use)
+			if execErr != nil {
+				log.Warn("Core搜索执行失败", "tool", use.ToolName, "error", execErr)
+				result = fmt.Sprintf("Search error: %s", execErr.Error())
+			}
+			toolResults = append(toolResults, format.CoreContentBlock{
+				Type:              "tool_result",
+				ToolUseID:         use.ToolUseID,
+				ToolResultContent: []format.CoreContentBlock{{Type: "text", Text: result}},
+			})
+		}
+
+		// Append the assistant message (without reasoning blocks: chat
+		// upstreams reject `reasoning_content` on input assistant messages)
+		// followed by the tool results.
+		assistant := *last
+		assistant.Content = nil
+		for _, b := range last.Content {
+			if b.Type == "reasoning" {
+				continue
+			}
+			assistant.Content = append(assistant.Content, b)
+		}
+		req.Messages = append(req.Messages, assistant)
+		req.Messages = append(req.Messages, format.CoreMessage{
+			Role:    "tool",
+			Content: toolResults,
+		})
+
+		if hasNonSearch {
+			// Mixed calls: return the current response so the client handles
+			// the non-search tool calls on the next round-trip.
+			return resp, nil
+		}
+
+		var err error
+		resp, err = prov.CreateCore(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		if resp == nil {
+			return nil, fmt.Errorf("core search loop: nil response")
+		}
+		log.Debug("Core 搜索循环轮次", "round", round+1, "tools_executed", len(searchUses))
+	}
+	return nil, fmt.Errorf("core search loop exceeded max rounds (%d)", maxRounds)
+}
+
+// executeCoreSearchCall executes a single injected search tool call from a
+// Core tool_use block.
+func executeCoreSearchCall(
+	ctx context.Context,
+	tavily *websearch.TavilyClient,
+	firecrawl *websearch.FirecrawlClient,
+	use format.CoreContentBlock,
+) (string, error) {
+	args := use.ToolInput
+	switch use.ToolName {
+	case "tavily_search", "web_search", "web_search_preview":
+		var params struct {
+			Query      string `json:"query"`
+			MaxResults int    `json:"max_results"`
+		}
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", fmt.Errorf("parse search params: %w", err)
+		}
+		if params.Query == "" {
+			return "", fmt.Errorf("search: query is required")
+		}
+		result, err := tavily.Search(ctx, websearch.SearchRequest{
+			Query:      params.Query,
+			MaxResults: params.MaxResults,
+		})
+		if err != nil {
+			return "", err
+		}
+		return websearch.FormatTavilyResults(result), nil
+
+	case "firecrawl_fetch":
+		if firecrawl == nil {
+			return "", fmt.Errorf("firecrawl not configured")
+		}
+		var params struct {
+			URL string `json:"url"`
+		}
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", fmt.Errorf("parse fetch params: %w", err)
+		}
+		if params.URL == "" {
+			return "", fmt.Errorf("fetch: url is required")
+		}
+		result, err := firecrawl.Fetch(ctx, websearch.FetchRequest{
+			URL:             params.URL,
+			Formats:         []string{"markdown"},
+			OnlyMainContent: true,
+		})
+		if err != nil {
+			return "", err
+		}
+		return websearch.FormatFirecrawlResult(result), nil
+
+	default:
+		return "", fmt.Errorf("unknown search tool: %s", use.ToolName)
+	}
 }
 
 // maxSearchRounds returns the configured max search rounds from the server config.

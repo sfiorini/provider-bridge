@@ -439,6 +439,25 @@ func (s *Server) handleWithAdapters(
 				writeOpenAIError(w, http.StatusBadGateway, payload)
 				return
 			}
+			if wsInjected {
+				searchCfg := s.resolvedSearchConfig(preferred.ProviderKey, openAIReq.Model)
+				coreResp, err = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+				if err != nil {
+					log.Error("adapter path: core search loop failed", "error", err)
+					payload := openai.ErrorResponse{
+						Error: openai.ErrorObject{
+							Message: fmt.Sprintf("visual search orchestration failed: %v", err),
+							Type:    "server_error",
+							Code:    "provider_error",
+						},
+					}
+					record.Error = traceError("chat_visual_search", err)
+					record.OpenAIResponse = payload
+					adapterHookErr = "chat_visual_search"
+					writeOpenAIError(w, http.StatusBadGateway, payload)
+					return
+				}
+			}
 			break
 		}
 
@@ -1243,6 +1262,24 @@ func (s *Server) handleAdapterStream(
 						streamRecord.OpenAIResponse = payload
 						writeOpenAIError(w, http.StatusBadGateway, payload)
 						return
+					}
+					if wsInjected {
+						searchCfg := s.resolvedSearchConfig(candidate.ProviderKey, openAIReq.Model)
+						coreResp, visErr = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+						if visErr != nil {
+							log.Error("adapter stream: core search loop failed", "error", visErr)
+							payload := openai.ErrorResponse{
+								Error: openai.ErrorObject{
+									Message: fmt.Sprintf("visual search orchestration failed: %v", visErr),
+									Type:    "server_error",
+									Code:    "provider_error",
+								},
+							}
+							streamRecord.Error = traceError("stream_chat_visual_search", visErr)
+							streamRecord.OpenAIResponse = payload
+							writeOpenAIError(w, http.StatusBadGateway, payload)
+							return
+						}
 					}
 					coreEvents = coreResponseToCoreStream(ctx, coreResp)
 					break
