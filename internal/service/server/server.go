@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -229,9 +230,54 @@ func (s *Server) handleModels(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	models := s.listModels()
+	// Local patch 5: OpenAI-compatible /v1/models shape. The upstream
+	// response only carries the proprietary "models" array, which breaks
+	// OpenAI-shaped consumers (e.g. Open WebUI) that read data[].id from
+	// {"object":"list","data":[...]}. Keep the legacy "models" key for the
+	// embedded console and add the standard fields alongside it. The "id"
+	// uses the provider/model slug, which ResolveModel accepts directly.
+	//
+	// The model list mixes provider/model entries with route aliases that
+	// may point at the same upstream model (the short aliases exist for
+	// Codex). Deduplicate by (provider, upstream model) so each model is
+	// listed once; aliases are sorted by slug so the choice is stable.
+	data := make([]map[string]any, 0, len(models))
+	appendData := func(m map[string]any) {
+		data = append(data, map[string]any{
+			"id":       m["slug"],
+			"object":   "model",
+			"owned_by": m["provider"],
+			"name":     m["name"],
+		})
+	}
+	seen := make(map[string]bool, len(models))
+	aliasEntries := make([]map[string]any, 0)
+	for _, m := range models {
+		if _, isAlias := m["model"]; isAlias {
+			aliasEntries = append(aliasEntries, m)
+			continue
+		}
+		seen[m["provider"].(string)+"/"+m["name"].(string)] = true
+		appendData(m)
+	}
+	sort.Slice(aliasEntries, func(i, j int) bool {
+		return aliasEntries[i]["slug"].(string) < aliasEntries[j]["slug"].(string)
+	})
+	for _, m := range aliasEntries {
+		key := m["provider"].(string) + "/" + m["model"].(string)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		appendData(m)
+	}
 	resp := struct {
+		Object string           `json:"object"`
+		Data   []map[string]any `json:"data"`
 		Models []map[string]any `json:"models"`
 	}{
+		Object: "list",
+		Data:   data,
 		Models: models,
 	}
 	writer.Header().Set("Content-Type", "application/json")
