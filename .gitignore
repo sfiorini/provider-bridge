@@ -12,8 +12,6 @@ __pycache__/
 .worktrees/
 docs/superpowers/
 helloagents/
-AGENTS.md
-CLAUDE.md
 !.codex/
 .codex/**
 !.codex/skills/
