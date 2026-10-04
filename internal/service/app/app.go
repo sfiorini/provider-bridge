@@ -251,6 +251,16 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 	_ = adapterReg.RegisterClient(oaiAdapter)
 	_ = adapterReg.RegisterClientStream(oaiAdapter)
 
+	// Inbound: Anthropic Messages client adapter (POST /v1/messages).
+	anthClientAdapter := anthropic.NewAnthropicClientAdapter(coreHooks)
+	_ = adapterReg.RegisterClient(anthClientAdapter)
+	_ = adapterReg.RegisterClientStream(anthClientAdapter)
+
+	// Inbound: OpenAI Chat Completions client adapter (POST /v1/chat/completions).
+	chatClientAdapter := chat.NewChatClientAdapter(coreHooks)
+	_ = adapterReg.RegisterClient(chatClientAdapter)
+	_ = adapterReg.RegisterClientStream(chatClientAdapter)
+
 	// Upstream: Anthropic provider adapter with cache manager.
 	cacheMgr := anthropic.NewCacheManager(&cfg.Cache, cacheReg)
 	anthAdapter := anthropic.NewAnthropicProviderAdapter(cfg.DefaultMaxTokens, cacheMgr, coreHooks)

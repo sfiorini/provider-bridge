@@ -2013,6 +2013,24 @@ func coreResponseToStreamEvents(ctx context.Context, resp *format.CoreResponse) 
 						return
 					}
 					index++
+				case "tool_use":
+					// Local fix: tool_use blocks were silently dropped from the
+					// synthesized stream, losing tool calls on the visual streaming
+					// path for every inbound protocol.
+					if !send(format.CoreStreamEvent{Type: format.CoreContentBlockStarted, Index: index, ContentBlock: &format.CoreContentBlock{
+						Type: "tool_use", ToolUseID: block.ToolUseID, ToolName: block.ToolName,
+					}}) {
+						return
+					}
+					if len(block.ToolInput) > 0 && string(block.ToolInput) != "null" {
+						if !send(format.CoreStreamEvent{Type: format.CoreToolCallArgsDelta, Index: index, Delta: string(block.ToolInput)}) {
+							return
+						}
+					}
+					if !send(format.CoreStreamEvent{Type: format.CoreContentBlockDone, Index: index}) {
+						return
+					}
+					index++
 				}
 			}
 		}

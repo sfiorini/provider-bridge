@@ -34,5 +34,10 @@ func sessionKeyFromRequest(request *http.Request) string {
 	if value := strings.TrimSpace(request.Header.Get("X-Codex-Window-Id")); value != "" {
 		return "codex-window:" + value
 	}
+	// Claude Code identifies its sessions with this header; keying on it
+	// enables cross-request state (e.g. DeepSeek reasoning replay).
+	if value := strings.TrimSpace(request.Header.Get("X-Claude-Code-Session-Id")); value != "" {
+		return "claude-session:" + value
+	}
 	return ""
 }

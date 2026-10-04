@@ -191,6 +191,9 @@ func New(cfg Config) *Server {
 	s.mux.HandleFunc("/responses", s.handleResponses)
 	s.mux.HandleFunc("/v1/models", s.handleModels)
 	s.mux.HandleFunc("/models", s.handleModels)
+	s.mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)
+	s.mux.HandleFunc("/v1/messages/count_tokens", s.handleAnthropicCountTokens)
+	s.mux.HandleFunc("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Handle("/console/", webui.Embedded())
 	s.registerPluginRoutes()
 	if cfg.Runtime != nil && cfg.Store != nil {
