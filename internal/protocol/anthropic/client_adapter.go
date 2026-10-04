@@ -23,6 +23,26 @@ import (
 // ClientProtocolID is the registry key for the inbound Anthropic Messages adapter.
 const ClientProtocolID = "anthropic-messages"
 
+// MarshalJSON omits empty fields from the wire shape so inbound SSE events
+// match the Anthropic spec (no "delta":{} or "index":0 noise).
+func (ev StreamEvent) MarshalJSON() ([]byte, error) {
+	type streamEventAlias struct {
+		Type         string           `json:"type"`
+		Message      *MessageResponse `json:"message,omitempty"`
+		Index        int              `json:"index,omitempty"`
+		ContentBlock *ContentBlock    `json:"content_block,omitempty"`
+		Delta        *StreamDelta     `json:"delta,omitempty"`
+		Usage        *Usage           `json:"usage,omitempty"`
+		Error        *ErrorObject     `json:"error,omitempty"`
+	}
+	alias := streamEventAlias{Type: ev.Type, Message: ev.Message, Index: ev.Index, ContentBlock: ev.ContentBlock, Usage: ev.Usage, Error: ev.Error}
+	if ev.Delta != (StreamDelta{}) {
+		delta := ev.Delta
+		alias.Delta = &delta
+	}
+	return json.Marshal(alias)
+}
+
 // AnthropicClientAdapter converts between the Anthropic Messages wire format
 // and Core. It implements format.ClientAdapter and format.ClientStreamAdapter.
 type AnthropicClientAdapter struct {
@@ -175,11 +195,17 @@ func (a *AnthropicClientAdapter) ToCoreRequest(ctx context.Context, req any) (*f
 		})
 	}
 
-	// Messages.
+	// Messages. Anthropic carries tool results in "user" messages; Core's
+	// canonical representation for tool results is role "tool" (both
+	// upstream adapters understand it), so tool-result-only user messages
+	// are normalized to the canonical role.
 	for _, msg := range anthReq.Messages {
 		coreMsg := format.CoreMessage{
 			Role:    msg.Role,
 			Content: convertInboundBlocks(msg.Content),
+		}
+		if msg.Role == "user" && toolResultOnly(coreMsg.Content) {
+			coreMsg.Role = "tool"
 		}
 		coreReq.Messages = append(coreReq.Messages, coreMsg)
 	}
@@ -234,6 +260,19 @@ func (a *AnthropicClientAdapter) ToCoreRequest(ctx context.Context, req any) (*f
 	a.hooks.MutateCoreRequest(ctx, coreReq)
 
 	return coreReq, nil
+}
+
+// toolResultOnly reports whether every block is a tool result.
+func toolResultOnly(blocks []format.CoreContentBlock) bool {
+	if len(blocks) == 0 {
+		return false
+	}
+	for _, block := range blocks {
+		if block.Type != "tool_result" {
+			return false
+		}
+	}
+	return true
 }
 
 // convertInboundBlocks converts Anthropic content blocks to Core blocks.
@@ -595,6 +634,15 @@ func (a *AnthropicClientAdapter) anthropicStreamLoop(
 			}
 
 		case format.CoreToolCallArgsDelta:
+			send(StreamEvent{
+				Type:  "content_block_delta",
+				Index: event.Index,
+				Delta: StreamDelta{Type: "input_json_delta", PartialJSON: event.Delta},
+			})
+
+		case format.CoreToolCallArgsDone:
+			// The visual-path synthesizer emits complete tool arguments in
+			// one event instead of incremental deltas.
 			send(StreamEvent{
 				Type:  "content_block_delta",
 				Index: event.Index,
