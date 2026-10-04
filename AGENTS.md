@@ -40,6 +40,7 @@ console, and a persistent SQLite config graph manageable via a management API.
 | Claude Code | Anthropic Messages | opus→mistral/zai-glm-5-3, sonnet→deepseek/deepseek-v4-pro, haiku→zen/space-bunny-free |
 | LibreChat | Chat Completions | single "Provider Bridge" endpoint, model list fetched live |
 | Open WebUI | OpenAI type, api_type `responses` | reads `/v1/models` OpenAI shape |
+| Affiora (morphic fork) | Chat Completions | joined via the compose network `provider-bridge_default`; default model `mistral/zai-glm-5-3` |
 
 ---
 
@@ -281,9 +282,11 @@ Against the live bridge (token = `server.auth_token` in `config.yml`):
 2. **Claude Code shape**: `POST /v1/messages` streaming AND non-stream, with
    thinking and with tools → expect proper SSE sequence / content blocks;
    then `claude -p "Reply with exactly: OK" --model sonnet` (and haiku).
-3. **LibreChat shape**: `POST /v1/chat/completions` non-stream + streaming
-   with tools (arguments must be JSON strings) → verify from inside the
-   LibreChat container against `host.docker.internal:38440`.
+3. **LibreChat / Affiora shape**: `POST /v1/chat/completions` non-stream +
+   streaming with tools (arguments must be JSON strings) → verify from
+   inside the LibreChat container against `host.docker.internal:38440`,
+   and from inside the affiora container against
+   `http://provider-bridge:38440` (AI SDK datastream e2e).
 4. **Models**: `GET /v1/models` → OpenAI `object`/`data[]` with slug ids,
    deduplicated against route aliases.
 5. **Web search**: a `web_search` tool request through `/v1/messages` or
