@@ -21,10 +21,4 @@ describe("FieldStatus", () => {
     expect(screen.getByRole("status")).toHaveAttribute("data-status", "dirty");
     expect(screen.getByRole("status").querySelector(".field-status__dot")).toBeInTheDocument();
   });
-
-  test("localizes save state labels in Chinese locale", () => {
-    renderWithConsoleProviders(<FieldStatus status="saving" />, { locale: "zh-CN" });
-
-    expect(screen.getByText("保存中")).toBeInTheDocument();
-  });
 });

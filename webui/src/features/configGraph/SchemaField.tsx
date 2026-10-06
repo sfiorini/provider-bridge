@@ -447,7 +447,7 @@ function isProviderProtocolField(field: FieldSchema, docPath: ConfigPath | undef
   return field.path === "protocol" && docPath === "providers.<key>.protocol";
 }
 
-function fieldLabel(field: FieldSchema, docPath: ConfigPath | undefined, locale: "en-US" | "zh-CN") {
+function fieldLabel(field: FieldSchema, docPath: ConfigPath | undefined, locale: "en-US") {
   const entry = docPath ? configDescriptions[docPath] : undefined;
   return entry?.title[locale] ?? field.label;
 }
@@ -1007,7 +1007,7 @@ function fieldHelpParts(
   field: FieldSchema,
   label: string,
   docPath: ConfigPath | undefined,
-  locale: "en-US" | "zh-CN",
+  locale: "en-US",
   labels: FieldHelpLabels
 ): FieldHelpParts {
   const entry = docPath ? configDescriptions[docPath] : undefined;

@@ -1,6 +1,7 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { MaterialFilledButton } from "../components/MaterialButton";
 import { renderWithConsoleProviders } from "../test/renderWithConsoleProviders";
 import { expectPanelElementToBeFlat, expectPanelRuleToAvoidEdges } from "../test/panelStyleAssertions";
 import { AppShell } from "./App";
@@ -37,54 +38,28 @@ describe("AppShell", () => {
     expect(screen.queryByRole("dialog", { name: /apply changes/i })).not.toBeInTheDocument();
   });
 
-  test("keeps shell actions limited to locale and theme controls", () => {
+  test("keeps shell actions limited to theme and sign-out controls", () => {
     renderWithConsoleProviders(
       <MemoryRouter>
         <AppShell content={<div>Console content</div>} />
       </MemoryRouter>
     );
 
-    expect(screen.getByLabelText(/language/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/language/i)).not.toBeInTheDocument();
     expect(getMaterialIconButton(document, "Switch to light theme")).toBeInTheDocument();
+    expect(getMaterialIconButton(document, "Sign out")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /apply/i })).not.toBeInTheDocument();
-  });
-
-  test("uses Material Web locale actions instead of a native browser select", () => {
-    renderWithConsoleProviders(
-      <MemoryRouter>
-        <AppShell content={<div>Console content</div>} />
-      </MemoryRouter>
-    );
-
-    expect(document.querySelector(".top-app-bar__meta select")).not.toBeInTheDocument();
-    expect(screen.getByRole("group", { name: /language/i })).toBeInTheDocument();
-    expect(getMaterialButton(document, "English", "filled")).toHaveAttribute("aria-pressed", "true");
-    expect(getMaterialButton(document, "中文", "outlined")).toHaveAttribute("aria-pressed", "false");
   });
 
   test("keeps global filled button icon colors aligned with label colors", () => {
     renderWithConsoleProviders(
       <MemoryRouter>
-        <AppShell content={<div>Console content</div>} />
+        <AppShell content={<MaterialFilledButton>Probe</MaterialFilledButton>} />
       </MemoryRouter>
     );
 
-    const selectedLocaleButton = getMaterialButton(document, "English", "filled");
-    expectMaterialFilledButtonContentColors(selectedLocaleButton, "var(--mb-color-on-primary)");
-  });
-
-  test("changes locale through Material Web locale actions", () => {
-    renderWithConsoleProviders(
-      <MemoryRouter>
-        <AppShell content={<div>Console content</div>} />
-      </MemoryRouter>
-    );
-
-    fireEvent.click(getMaterialButton(document, "中文", "outlined"));
-
-    expect(screen.getByRole("navigation", { name: "控制台分区" })).toBeInTheDocument();
-    expect(getMaterialButton(document, "English", "outlined")).toHaveAttribute("aria-pressed", "false");
-    expect(getMaterialButton(document, "中文", "filled")).toHaveAttribute("aria-pressed", "true");
+    const filledButton = getMaterialButton(document, "Probe", "filled");
+    expectMaterialFilledButtonContentColors(filledButton, "var(--mb-color-on-primary)");
   });
 
   test("changes theme through the Material Web icon button", () => {

@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   CONSOLE_LOCALE_STORAGE_KEY,
@@ -9,18 +8,12 @@ import {
 } from "./I18nProvider";
 
 function Probe() {
-  const { locale, setLocale, t } = useI18n();
+  const { locale, t } = useI18n();
   return (
     <div>
       <p data-testid="locale">{locale}</p>
       <p data-testid="title">{t("nav.overview")}</p>
       <p data-testid="routes">{t("overview.routes")}</p>
-      <button type="button" onClick={() => setLocale("en-US")}>
-        English
-      </button>
-      <button type="button" onClick={() => setLocale("zh-CN")}>
-        Chinese
-      </button>
     </div>
   );
 }
@@ -31,39 +24,7 @@ describe("I18nProvider", () => {
     vi.restoreAllMocks();
   });
 
-  test("defaults to Chinese when navigator language is zh", () => {
-    vi.spyOn(window.navigator, "language", "get").mockReturnValue("zh-CN");
-
-    render(
-      <I18nProvider>
-        <Probe />
-      </I18nProvider>
-    );
-
-    expect(screen.getByTestId("locale")).toHaveTextContent("zh-CN");
-    expect(screen.getByTestId("title")).toHaveTextContent("概览");
-    expect(screen.getByTestId("routes")).toHaveTextContent("路由");
-  });
-
-  test("supports switching to English and persists the choice", async () => {
-    const user = userEvent.setup();
-    vi.spyOn(window.navigator, "language", "get").mockReturnValue("zh-CN");
-
-    render(
-      <I18nProvider>
-        <Probe />
-      </I18nProvider>
-    );
-
-    await user.click(screen.getByRole("button", { name: "English" }));
-
-    expect(screen.getByTestId("locale")).toHaveTextContent("en-US");
-    expect(screen.getByTestId("title")).toHaveTextContent("Overview");
-    expect(localStorage.getItem(CONSOLE_LOCALE_STORAGE_KEY)).toBe("en-US");
-  });
-
-  test("uses stored language before navigator language", () => {
-    localStorage.setItem(CONSOLE_LOCALE_STORAGE_KEY, "en-US");
+  test("defaults to English regardless of navigator language", () => {
     vi.spyOn(window.navigator, "language", "get").mockReturnValue("zh-CN");
 
     render(
@@ -74,12 +35,28 @@ describe("I18nProvider", () => {
 
     expect(screen.getByTestId("locale")).toHaveTextContent("en-US");
     expect(screen.getByTestId("title")).toHaveTextContent("Overview");
+    expect(screen.getByTestId("routes")).toHaveTextContent("Routes");
   });
 
-  test("translates messages outside React from the stored locale", () => {
+  test("ignores a persisted non-English locale", () => {
     localStorage.setItem(CONSOLE_LOCALE_STORAGE_KEY, "zh-CN");
 
-    expect(translateMessage("error.requestFailedWithStatus", { status: 502 })).toBe("请求失败，状态码 502");
+    render(
+      <I18nProvider>
+        <Probe />
+      </I18nProvider>
+    );
+
+    expect(screen.getByTestId("locale")).toHaveTextContent("en-US");
+    expect(screen.getByTestId("title")).toHaveTextContent("Overview");
+  });
+
+  test("translates messages outside React in English", () => {
+    localStorage.setItem(CONSOLE_LOCALE_STORAGE_KEY, "zh-CN");
+
+    expect(translateMessage("error.requestFailedWithStatus", { status: 502 })).toBe(
+      "Request failed with status 502"
+    );
   });
 
   test("keeps working when localStorage is unavailable", () => {

@@ -78,18 +78,18 @@ describe("logs RPC client", () => {
     });
   });
 
-  test("localizes stream fallback failures from the stored locale", async () => {
-    localStorage.setItem("providerbridge.console.locale", "zh-CN");
+  test("reports stream fallback failures", async () => {
+    localStorage.setItem("providerbridge.console.locale", "en-US");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 503 }));
 
     await expect(createLogStream()).rejects.toMatchObject({
       code: "log_stream_error",
-      message: "日志流请求失败，状态码 503"
+      message: "Log stream failed with status 503"
     });
   });
 
-  test("localizes empty stream body failures from the stored locale", async () => {
-    localStorage.setItem("providerbridge.console.locale", "zh-CN");
+  test("reports empty stream body failures", async () => {
+    localStorage.setItem("providerbridge.console.locale", "en-US");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(null, {
         status: 200
@@ -98,7 +98,7 @@ describe("logs RPC client", () => {
 
     await expect(createLogStream()).rejects.toMatchObject({
       code: "log_stream_error",
-      message: "日志流响应体为空"
+      message: "Log stream response body is empty"
     });
   });
 });

@@ -144,22 +144,6 @@ describe("OverviewPage", () => {
     expectPanelStateRuleToStayFlat(".usage-chart:focus-visible");
   });
 
-  test("localizes usage units and chart accessibility text in Chinese locale", async () => {
-    vi.spyOn(configGraph, "getConfigGraph").mockResolvedValue(configGraphFixture());
-    vi.spyOn(management, "getUsageStats").mockResolvedValue(usageStats());
-    vi.spyOn(logs, "getRecentLogs").mockResolvedValue(logEntries());
-    vi.spyOn(logs, "createLogStream").mockResolvedValue(new Response(new ReadableStream<Uint8Array>()));
-
-    renderWithConsoleProviders(<OverviewPage />, { locale: "zh-CN" });
-
-    await screen.findByRole("heading", { name: "用量分析" });
-    await screen.findAllByText("请求");
-    expect(screen.getByRole("img", { name: /Token 拆分图表。输入 Token：300；输出 Token：80/ })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /缓存拆分图表。缓存写入：40；缓存读取：120/ })).toBeInTheDocument();
-    const modelRow = await screen.findByRole("row", { name: /claude-sonnet/i });
-    expect(modelRow).toHaveTextContent("¥1,105.26/百万");
-  });
-
   test("keeps the current usage dashboard visible while a newly selected range is loading", async () => {
     vi.spyOn(configGraph, "getConfigGraph").mockResolvedValue(configGraphFixture());
     vi.spyOn(logs, "getRecentLogs").mockResolvedValue(logEntries());
@@ -324,7 +308,7 @@ describe("OverviewPage", () => {
 
   test("keeps usage dashboard and logs visible when graph API store is unavailable", async () => {
     vi.spyOn(configGraph, "getConfigGraph").mockRejectedValue(
-      new ApiError(503, "store_unavailable", "配置存储不可用")
+      new ApiError(503, "store_unavailable", "Config store unavailable")
     );
     vi.spyOn(management, "getUsageStats").mockResolvedValue(usageStats());
     vi.spyOn(logs, "getRecentLogs").mockResolvedValue([]);

@@ -86,20 +86,6 @@ describe("DefaultsPage", () => {
     expect(queryMaterialFilledButton(document, "Delete Trace main")).not.toBeInTheDocument();
     expect(queryMaterialFilledButton(document, "Delete Log main")).not.toBeInTheDocument();
   });
-
-  test("localizes singleton resource titles and field labels in Chinese locale", async () => {
-    vi.spyOn(configGraph, "getConfigGraph").mockResolvedValue(configGraphFixture());
-
-    renderWithConsoleProviders(<DefaultsPage />, { locale: "zh-CN" });
-
-    expect(await screen.findByRole("heading", { level: 2, name: "默认值" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "追踪" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "日志" })).toBeInTheDocument();
-    expect(within(screen.getByLabelText("默认值 main 状态")).getByText("已保存")).toBeInTheDocument();
-    expect(getMaterialTextField(document, "默认模型")).toBeInTheDocument();
-    expect(getMaterialTextField(document, "全局系统提示词")).toBeInTheDocument();
-    expect(getMaterialSelect(document, "日志级别")).toBeInTheDocument();
-  });
 });
 
 type MaterialTextFieldElement = HTMLElement & {

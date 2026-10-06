@@ -88,16 +88,16 @@ describe("LogsPage", () => {
     expect(getMaterialFilterChip(followMode, "Pause")).toHaveProperty("selected", true);
   });
 
-  test("localizes log row labels in Chinese locale", async () => {
+  test("labels log rows", async () => {
     vi.spyOn(logs, "getRecentLogs").mockResolvedValue(logEntries());
     vi.spyOn(logs, "createLogStream").mockResolvedValue(
       new Response(new ReadableStream<Uint8Array>())
     );
 
-    renderWithConsoleProviders(<LogsPage />, { locale: "zh-CN" });
+    renderWithConsoleProviders(<LogsPage />);
 
-    expect(await screen.findByLabelText("日志 1")).toHaveTextContent("server started");
-    expect(screen.getByLabelText("日志 2")).toHaveTextContent("database unavailable");
+    expect(await screen.findByLabelText("Log 1")).toHaveTextContent("server started");
+    expect(screen.getByLabelText("Log 2")).toHaveTextContent("database unavailable");
   });
 
   test("shows empty feedback and disables log actions when filters hide every row", async () => {
