@@ -203,6 +203,9 @@ pick the right HTTP client for the provider.
   the new inbounds: Core in → CoreResponse / Core event stream out.
   Supports anthropic + openai-chat upstreams; google-genai returns a clear
   error (no provider configured uses it today — add a case when needed).
+- **Visual gating deviation (issue #4, 2026-10 remediation):** chat and anthropic visual
+  gating in `handleWithAdapters`/`handleAdapterStream`/`core_upstream.go` was deliberately
+  aligned to the proven anthropic pattern: per request, `needsAssist := coreRequestHasImage(coreReq) && !s.candidateSupportsImage(candidate)`; the visual orchestrator is attempted first; the wire-level image strip applies only on the fall-through (wrapWithVisual returned nil), with an explicit warning log. `wrapWithVisual`, `ConfigForModelFromResolvedConfig`, `StripImagesFromAnthropic/Chat`, and `core_orchestrator.go` remain untouched.
 - `inbound_handlers.go` — HTTP handlers: `handleAnthropicMessages`,
   `handleAnthropicCountTokens`, `handleChatCompletions` + SSE writers +
   Core-usage-based stats/logging (`recordInboundCompletion`).

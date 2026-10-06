@@ -199,3 +199,98 @@ func TestVisualOnOpenAIChat_OrchestratesBriefAcrossTwoMocks(t *testing.T) {
 		t.Fatalf("final response = %q, want it to incorporate the visual brief", finalText)
 	}
 }
+
+// TestChatAdapterForwardsImagesToImageCapableUpstream proves the direct
+// (non-orchestrator) chat path forwards images unstripped to an image-capable
+// upstream. With no CoreBridge in the loop the CoreProvider drives the chat
+// adapter straight to the upstream, which must receive the inbound data URL
+// byte-for-byte, exactly once, and never the visual attachment placeholder.
+//
+// This is the cross-protocol (internal/e2e) counterpart to the server-level
+// TestChatCompletions_ImageCapableModelReceivesImageUnstripped in
+// internal/service/e2e/chat_visual_e2e_test.go: it pins the adapter/provider
+// seam itself rather than the HTTP dispatch around it.
+func TestChatAdapterForwardsImagesToImageCapableUpstream(t *testing.T) {
+	ctx := context.Background()
+
+	type observed struct {
+		mu     sync.Mutex
+		bodies [][]byte
+		rounds int
+	}
+	upstreamObs := &observed{}
+
+	// Image-capable upstream mock: always answers with plain text.
+	upstreamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		upstreamObs.mu.Lock()
+		upstreamObs.rounds++
+		upstreamObs.bodies = append(upstreamObs.bodies, body)
+		upstreamObs.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{
+			"id":"chatcmpl_mm_1","object":"chat.completion","model":"multimodal-test",
+			"choices":[{"index":0,"finish_reason":"stop","message":{
+				"role":"assistant","content":"an image was attached"
+			}}],
+			"usage":{"prompt_tokens":30,"completion_tokens":6,"total_tokens":36}
+		}`)
+	}))
+	defer upstreamSrv.Close()
+
+	chatClient := chat.NewClient(chat.ClientConfig{
+		BaseURL: upstreamSrv.URL, APIKey: "k", Client: upstreamSrv.Client(),
+	})
+	adapter := chat.NewChatProviderAdapter(2048, nil, format.CorePluginHooks{}.WithDefaults())
+
+	// Direct provider: Core -> chat wire -> Core. No orchestrator, no visual
+	// provider, so an image-capable upstream must see the image untouched.
+	provider := visualpkg.CoreProviderFunc(func(ctx context.Context, req *format.CoreRequest) (*format.CoreResponse, error) {
+		upstreamAny, err := adapter.FromCoreRequest(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		chatResp, err := chatClient.CreateChat(ctx, upstreamAny.(*chat.ChatRequest))
+		if err != nil {
+			return nil, err
+		}
+		return adapter.ToCoreResponse(ctx, chatResp)
+	})
+
+	coreReq := &format.CoreRequest{
+		Model: "multimodal-test",
+		Messages: []format.CoreMessage{{
+			Role: "user",
+			Content: []format.CoreContentBlock{
+				{Type: "text", Text: "describe the image"},
+				{Type: "image", ImageData: "data:image/png;base64,AAAA", MediaType: "image/png"},
+			},
+		}},
+	}
+
+	if _, err := provider.CreateCore(ctx, coreReq); err != nil {
+		t.Fatalf("CreateCore error: %v", err)
+	}
+
+	// --- Assertion 1: no orchestrator means exactly one upstream round.
+	if upstreamObs.rounds != 1 {
+		t.Fatalf("upstream rounds = %d, want 1 (no orchestrator on the image-capable path)", upstreamObs.rounds)
+	}
+	body := string(upstreamObs.bodies[0])
+
+	// --- Assertion 2: the image data URL reaches the upstream verbatim.
+	if !strings.Contains(body, `"image_url"`) {
+		t.Fatalf("upstream body missing image_url part: %s", body)
+	}
+	if !strings.Contains(body, "data:image/png;base64,AAAA") {
+		t.Fatalf("upstream body missing the byte-preserved image data URL: %s", body)
+	}
+
+	// --- Assertion 3: the visual fall-through placeholder never appears on the
+	// direct image-capable path (the image was not stripped).
+	if strings.Contains(body, "is available to Visual Brief") {
+		t.Fatalf("upstream body contains the visual attachment placeholder: %s", body)
+	}
+}
+
