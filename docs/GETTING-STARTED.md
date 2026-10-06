@@ -1,104 +1,133 @@
 # Getting Started
 
-> 5 分钟跑通第一个对话。更多用法见 [COOKBOOK.md](COOKBOOK.md)。
+> Get a first conversation working in about five minutes. More recipes live in
+> [COOKBOOK.md](COOKBOOK.md).
 
-## 1. 安装
+## 1. Install
 
-### 前置要求
+### Requirements
 
-- **Go 1.25+** — 用于编译和运行
-- 一个上游 LLM Provider 的 API Key（如 DeepSeek、OpenAI、Anthropic、Kimi 等）
+- **Go 1.25+** — to build and run.
+- An API key for at least one upstream provider (DeepSeek, OpenAI, Anthropic,
+  Kimi, …).
 
-### 获取代码
+### Get the code
+
+This is the Provider Bridge fork:
 
 ```bash
 git clone git@github.com:sfiorini/provider-bridge.git
 cd provider-bridge
 ```
 
-### 编译
+The Go module is named `providerbridge`.
+
+### Build
 
 ```bash
 go build -o providerbridge ./cmd/providerbridge
 ```
 
-pacman 或二进制安装后可以直接运行：
-
-```bash
-providerbridge
-```
-
-源码开发也可以直接运行：
+You can also run straight from source:
 
 ```bash
 go run ./cmd/providerbridge
 ```
 
-## 2. 配置
+## 2. Configure
 
-未传 `-config` 且 `$HOME/provider-bridge/config.yml` 不存在时，Provider Bridge 会自动创建 starter 配置，启用 SQLite，并把数据库放在 `$HOME/provider-bridge/data/provider-bridge.db`。启动后打开 Web Console：
+If `-config` is omitted and `$HOME/provider-bridge/config.yml` does not exist,
+Provider Bridge creates a starter config with SQLite enabled and the database at
+`$HOME/provider-bridge/data/provider-bridge.db`, then starts. Open the Web
+Console:
 
 ```text
 http://127.0.0.1:38440/console/
 ```
 
-真实请求前，需要在 Web Console 中替换 starter 配置里的占位 Provider、Model 和 API Key。仍需要准备一个上游 LLM Provider 的 API Key（如 DeepSeek、OpenAI、Anthropic、Kimi 等）。
+Before sending real requests, replace the placeholder provider, model and API
+key in the starter config — either in the Console or by editing the YAML.
 
-如需手动维护 YAML，可参考 `config.example.yml`。详细配置说明见 [CONFIGURATION.md](CONFIGURATION.md)。
+To maintain the YAML directly, copy [`../config.example.yml`](../config.example.yml)
+and adjust it. See [CONFIGURATION.md](CONFIGURATION.md) for the full reference.
 
-### 最小配置示例（以 DeepSeek 为例）
+### Minimal config (DeepSeek example)
 
 ```yaml
 mode: "Transform"
+
 server:
   addr: "127.0.0.1:38440"
 
 defaults:
-  model: "deepseek-chat"
+  model: "deepseek-v4-pro"
 
 models:
-  deepseek-chat:
+  deepseek-v4-pro:
     context_window: 1000000
+    max_output_tokens: 384000
+    input_modalities: ["text"]
 
 providers:
   deepseek:
-    base_url: "https://api.deepseek.com/anthropic"
-    api_key: "sk-你的-API-Key"
-    version: "2023-06-01"
     protocol: "anthropic"
+    base_url: "https://api.deepseek.com/anthropic"
+    api_key: "sk-your-api-key"
+    version: "2023-06-01"
     offers:
-      - model: deepseek-chat
+      - model: deepseek-v4-pro
 
 routes:
   default:
-    model: deepseek-chat
+    model: deepseek-v4-pro
     provider: deepseek
 ```
 
-### 支持四种上游协议
+### Supported upstream protocols
 
-| 协议 | protocol 值 | 示例 Provider |
-|------|-------------|---------------|
-| Anthropic Messages | `anthropic` | DeepSeek、Kimi、Anthropic |
-| OpenAI Responses | `openai-response` | OpenAI（直通） |
+| Protocol | `protocol` value | Example providers |
+|----------|------------------|-------------------|
+| Anthropic Messages | `anthropic` | DeepSeek, Kimi, Anthropic |
+| OpenAI Responses | `openai-response` | OpenAI (passthrough) |
 | Google GenAI (Gemini) | `google-genai` | Google Gemini |
-| OpenAI Chat | `openai-chat` | 兼容 OpenAI Chat 的 API |
+| OpenAI Chat | `openai-chat` | OpenAI-chat-compatible APIs |
 
-## 3. 启动
+## 3. Start
 
 ```bash
-providerbridge
+providerbridge -config config.yml
 ```
 
-日志输出：
+Startup output looks like this (English since the fork's English-only rewrite):
 
-```
-Provider Bridge 监听于 127.0.0.1:38440
+```text
+Provider Bridge listening on 127.0.0.1:38440
 Web Console: http://127.0.0.1:38440/console/
-INFO HTTP 服务器监听中 addr=127.0.0.1:38440
+time=2026-10-06T12:00:00.000+02:00 level=INFO msg="config loaded" path=config.yml mode=Transform addr=127.0.0.1:38440
+time=2026-10-06T12:00:00.000+02:00 level=INFO msg="HTTP server listening" addr=127.0.0.1:38440 webui=http://127.0.0.1:38440/console/
 ```
 
-## 4. 测试连通性
+## 4. Verify the model list
+
+```bash
+curl http://127.0.0.1:38440/v1/models
+```
+
+The OpenAI-shaped response is `{"object":"list","data":[...]}` with
+`provider/model` slug ids; the legacy `{"models":[...]}` shape is also present.
+
+## 5. First chat
+
+Chat Completions:
+
+```bash
+curl http://127.0.0.1:38440/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer any-value" \
+  -d '{"model": "default", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+Responses:
 
 ```bash
 curl http://127.0.0.1:38440/v1/responses \
@@ -107,14 +136,22 @@ curl http://127.0.0.1:38440/v1/responses \
   -d '{"model": "default", "input": "Hello"}'
 ```
 
-## 5. 验证模型列表
+Anthropic Messages:
 
 ```bash
-curl http://127.0.0.1:38440/v1/models
+curl http://127.0.0.1:38440/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: any-value" \
+  -d '{"model": "default", "max_tokens": 256, "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
-## 下一步
+If `server.auth_token` is set, send that value as the Bearer token (or
+`x-api-key`) instead of `any-value`.
 
-- [COOKBOOK.md](COOKBOOK.md) — 常见用法场景
-- [ARCHITECTURE.md](ARCHITECTURE.md) — 系统架构详解
-- [CONFIGURATION.md](CONFIGURATION.md) — 完整配置指南
+## Next steps
+
+- [CONSUMERS.md](CONSUMERS.md) — wiring Codex, Claude Code, LibreChat, Open
+  WebUI and Affiora to the bridge.
+- [COOKBOOK.md](COOKBOOK.md) — common task recipes (macOS/Linux and Windows).
+- [CONFIGURATION.md](CONFIGURATION.md) — complete configuration reference.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how the bridge is put together.

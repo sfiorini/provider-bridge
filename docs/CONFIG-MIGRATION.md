@@ -1,37 +1,54 @@
-# 配置迁移
+# Config Migration
 
-Provider Bridge 还没有公开发布，配置结构变更时会直接切到当前格式，不在运行时保留旧字段别名。旧配置请用迁移脚本做一次性迁移，然后按新结构维护。
+Provider Bridge is pre-release: config changes switch directly to the current
+format with no runtime aliases for old fields. Migrate an old config with the
+one-shot script, then maintain it in the new shape.
 
----
+There are two scripts in `scripts/`:
 
-## v5 迁移（当前格式）
+- `migrate_config_v5.py` — pre-v5 → v5 (the current top-level
+  `providers`/`models`/`routes` layout).
+- `migrate_config.py` — the older pre-`provider/routes` → current
+  provider/routes format (per-provider `models` keyed by upstream model name,
+  the `extensions` slot).
 
-从 v4（含 `provider.providers` 嵌套格式）迁移到 v5（顶层 `providers`/`models`/`routes`）。
+Both are `uv` scripts (PEP 723) requiring Python ≥3.10 and `ruamel.yaml`.
 
-迁移脚本：`scripts/migrate_config_v5.py`
+## v4 → v5 migration (current format)
 
-### 使用方式
+Moves from v4 (the `provider.providers` nesting) to v5 (top-level
+`providers` / `models` / `routes`).
+
+### Usage
 
 ```bash
 uv run scripts/migrate_config_v5.py config.yml output.yml
 ```
 
-建议先跑 `--dry-run` 预览结果（脚本暂不支持 dry-run 标志，可先复制配置做测试）。
+The script takes exactly two positional arguments (input, output) and writes a
+new file. **There is no `--dry-run` flag.** To preview, copy your config first
+and run the migration against the copy:
 
-### 主要变更
+```bash
+cp config.yml config.migrated-preview.yml
+uv run scripts/migrate_config_v5.py config.migrated-preview.yml config.out.yml
+diff config.yml config.out.yml
+```
 
-| 旧格式 (v4) | 新格式 (v5) |
-|---|---|
-| `provider.providers.<key>.models`（客户端别名映射） | 共享模型元数据放顶层 `models.<slug>`，提供商声明放 `providers.<key>.offers[].model` |
-| `routes[].to`（如 `"deepseek/deepseek-v4-pro"`） | `routes[].model` + `routes[].provider` |
-| `provider.base_url` / `provider.api_key`（顶层） | 删除，改为 `providers.<key>.base_url` / `api_key` |
+### What changes
+
+| Old (v4) | New (v5) |
+|----------|----------|
+| `provider.providers.<key>.models` (client-alias mapping) | Shared metadata moves to top-level `models.<slug>`; the provider declares `providers.<key>.offers[].model` |
+| `routes[].to` (e.g. `"deepseek/deepseek-v4-pro"`) | `routes[].model` + `routes[].provider` |
+| `provider.base_url` / `provider.api_key` (top level) | Removed; use `providers.<key>.base_url` / `api_key` |
 | `provider.default_model` / `provider.default_max_tokens` / `system_prompt` | `defaults.model` / `defaults.max_tokens` / `defaults.system_prompt` |
 | `trace_requests: true` | `trace: { enabled: true }` |
 | `developer.proxy.*` | `proxy.*` |
 
-### 示例
+### Example
 
-v4 格式：
+v4:
 
 ```yaml
 provider:
@@ -49,7 +66,7 @@ provider:
       to: "deepseek/deepseek-v4-pro"
 ```
 
-迁移后 (v5)：
+After migration (v5):
 
 ```yaml
 providers:
@@ -75,10 +92,12 @@ defaults:
   max_tokens: 4096
 ```
 
-### 注意事项
+### Caveats
 
-- 共享模型 slug 在整个配置中必须唯一。如果多个 provider 提供同一个 slug，在 `offers` 中重复引用即可。
-- 定价从模型定义层迁移到 `offers[].pricing`，按 provider 分别设置。
-- 旧格式中 provider 级的 `web_search` / `extensions` 配置会保留在 provider 定义中。
-- 运行迁移脚本前建议备份原配置。
-
+- A shared model slug must be unique across the config. If several providers
+  offer the same slug, reference it repeatedly in each provider's `offers`.
+- Pricing moves from the model definition to `offers[].pricing`, so it is
+  configured per provider.
+- Provider-level `web_search` / `extensions` settings are preserved on the
+  provider definition.
+- Back up the original config before running the migration.
