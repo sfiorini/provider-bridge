@@ -27,8 +27,8 @@ still being written are marked **planned**.
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Four-layer architecture, the three inbound request paths, Core IR, adapter registry, cross-cutting machinery |
 | [EXTENSION-SYSTEM.md](EXTENSION-SYSTEM.md) | Plugin interfaces, capability types, the registry, server/persistence integration, lifecycle |
 | [EXTENSIONS.md](EXTENSIONS.md) | Catalogue of shipped extensions: deepseek_v4, visual, web search injection, kimi_workaround, codex, databases, metrics |
-| `docs/WEB-SEARCH.md` | **Planned.** Server-side web-search injection: config scopes, support modes, execution loops, startup-only resolution |
-| `docs/CONSUMERS.md` | **Planned.** Consumer matrix: Codex, Claude Code, LibreChat, Open WebUI, Affiora — wire protocol, connection target, per-app config |
+| [WEB-SEARCH.md](WEB-SEARCH.md) | Server-side web-search injection: config scopes, support modes, execution loops, startup-only resolution |
+| [CONSUMERS.md](CONSUMERS.md) | Consumer matrix: Codex, Claude Code, LibreChat, Open WebUI, Affiora — wire protocol, connection target, per-app config |
 
 ## Development
 
