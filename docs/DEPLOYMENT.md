@@ -69,19 +69,26 @@ The repository `Dockerfile` builds a static binary and copies it into a
 
 ```dockerfile
 FROM golang:1.27-bookworm AS builder
+
+ENV GOPROXY=https://goproxy.cn,direct
+
 WORKDIR /src
+
 COPY go.mod go.sum ./
 RUN go mod download
+
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/providerbridge ./cmd/providerbridge
 
 FROM gcr.io/distroless/static-debian12:nonroot
+
 WORKDIR /app
+
 COPY --from=builder /out/providerbridge /app/providerbridge
-RUN mkdir -p /config /app/data
-COPY --from=builder /src/config.example.yml /app/config.example.yml
+COPY config.example.yml /app/config.example.yml
 
 EXPOSE 38440
+
 USER nonroot:nonroot
 ENTRYPOINT ["/app/providerbridge"]
 CMD ["-config", "/config/config.yml", "-addr", "0.0.0.0:38440"]
@@ -118,9 +125,14 @@ services:
       - ./trace:/app/trace
 ```
 
-Before `docker compose up`:
+Before `docker compose up`: the image runs no `mkdir` for `/config` or
+`/app/data` (distroless has no shell); those paths come from the compose bind
+mounts, so the host-side mount sources must exist and be owned by the nonroot
+uid/gid. Docker would otherwise create missing sources as `root`, which fails
+the ownership check:
 
 ```bash
+mkdir -p ./data ./logs ./trace
 sudo chown -R 65532:65532 ./data
 chmod 644 ./config.yml
 ```

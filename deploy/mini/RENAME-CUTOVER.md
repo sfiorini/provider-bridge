@@ -109,8 +109,10 @@ cp -a ~/.codex/config.toml ~/.codex/models_catalog.json             *.bak-<date>
 12. **Zen sync script:** `mv ~/.local/bin/<legacy>-zen-sync
     ~/.local/bin/provider-bridge-zen-sync`; edit contents — env prefix
     `<LEGACY>_*` → `PROVIDER_BRIDGE_*`, codex provider key `provider-bridge`,
-    stale `sudo docker logs <legacy>` → `provider-bridge`, any
-    `<legacy>`/`<legacy>` string → the new name. Confirm it parses:
+    stale `sudo docker logs <legacy>` → `provider-bridge`, and every remaining
+    occurrence of the old name → the new name: search both the hyphenated
+    product spelling (`<legacy-name>`) and the un-hyphenated binary/env
+    spelling (`<legacy-binary>`). Confirm it parses:
     `python3 -m py_compile ~/.local/bin/provider-bridge-zen-sync`.
 13. **Codex config:** regenerate `~/.codex/config.toml` +
     `models_catalog.json` so Codex uses `provider-bridge`. If regenerating,
@@ -208,7 +210,7 @@ not a bridge defect); `mistral-large-latest` invoked it and answered correctly.
     `38440:127.0.0.1:38440` forward; logs renamed). Tunnel reachable again (`200`).
 12. `~/.local/bin/<legacy>-zen-sync` → `provider-bridge-zen-sync`; constant
     `<LEGACY>` → `PROVIDER_BRIDGE`, provider key + `docker logs`/`ps` filter
-    → `provider-bridge`, all `<legacy>`/`<legacy>` strings replaced;
+    → `provider-bridge`, all `<legacy-name>`/`<legacy-binary>` strings replaced;
     `python3 -m py_compile` OK; 0 `moon` matches remain.
 13. `~/.codex/config.toml` updated surgically (hand-maintained sections
     preserved): `model_provider` → `provider-bridge`,
