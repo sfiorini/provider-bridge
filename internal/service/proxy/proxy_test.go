@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/service/proxy"
-	mbtrace "moonbridge/internal/service/trace"
+	"providerbridge/internal/service/proxy"
+	mbtrace "providerbridge/internal/service/trace"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

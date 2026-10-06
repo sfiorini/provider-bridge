@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/logger"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/service/stats"
 )
 
 // resetLoggerForTest re-initialises the global logger with a JSON handler

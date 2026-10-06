@@ -1,6 +1,6 @@
 # Extension 系统
 
-Moon Bridge 的 Extension 系统基于能力接口（capability interfaces）的插件架构。插件通过实现 `Plugin` 基础接口和零个或多个能力接口来扩展桥接能力。
+Provider Bridge 的 Extension 系统基于能力接口（capability interfaces）的插件架构。插件通过实现 `Plugin` 基础接口和零个或多个能力接口来扩展桥接能力。
 
 ## 核心接口
 
@@ -34,7 +34,7 @@ type PluginContext struct {
 
 ```go
 type RequestContext struct {
-    ModelAlias  string               // 模型别名（如 "moonbridge"）
+    ModelAlias  string               // 模型别名（如 "providerbridge"）
     SessionData map[string]any       // 跨请求会话数据，按插件名索引
     Reasoning   map[string]any       // OpenAI reasoning 配置
     WebSearch   WebSearchInfo        // 解析后的 Web Search 设置
@@ -295,7 +295,7 @@ func (p *DSPlugin) EnabledForModel(model string) bool {
 package demo
 
 import (
-    "moonbridge/internal/extension/plugin"
+    "providerbridge/internal/extension/plugin"
 )
 
 const PluginName = "demo"
@@ -335,9 +335,9 @@ func (p *DemoPlugin) EnabledForModel(model string) bool {
 package demo
 
 import (
-    "moonbridge/internal/extension/plugin"
-    "moonbridge/internal/format"
-    "moonbridge/internal/protocol/openai"
+    "providerbridge/internal/extension/plugin"
+    "providerbridge/internal/format"
+    "providerbridge/internal/protocol/openai"
 )
 
 // 注入额外工具的插件

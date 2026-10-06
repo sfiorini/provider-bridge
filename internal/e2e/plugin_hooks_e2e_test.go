@@ -12,10 +12,10 @@ import (
 	"sync"
 	"testing"
 
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/protocol/openai"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/openai"
 )
 
 // ============================================================================

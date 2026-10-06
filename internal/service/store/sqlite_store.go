@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
 )
 
 // SQLiteConfigStore implements ConfigStore backed by a SQLite database.

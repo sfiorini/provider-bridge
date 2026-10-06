@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 func TestCollectToolUsesFromEvents_empty(t *testing.T) {

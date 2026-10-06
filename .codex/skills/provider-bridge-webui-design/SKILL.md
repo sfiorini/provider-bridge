@@ -1,9 +1,9 @@
 ---
-name: moonbridge-webui-design
-description: Moon Bridge webui design and component rules. Use whenever changing files under webui/src that affect UI structure, controls, styling, theme tokens, layouts, or interaction behavior.
+name: provider-bridge-webui-design
+description: Provider Bridge webui design and component rules. Use whenever changing files under webui/src that affect UI structure, controls, styling, theme tokens, layouts, or interaction behavior.
 ---
 
-# Moon Bridge Webui Design
+# Provider Bridge Webui Design
 
 ## Core Rule
 
@@ -55,7 +55,7 @@ Visual verification is required for migrated controls. Use browser-rendered scre
 
 ## Reviewer Agent Requirements
 
-When acting as a reviewer agent for Moon Bridge webui changes, enforce this skill strictly:
+When acting as a reviewer agent for Provider Bridge webui changes, enforce this skill strictly:
 
 - Block approval if a common control is still hand-rolled and there is no explicit user-approved exception recorded in code or in `docs/webui/material-component-debt.md`.
 - Block approval if `webui/src` production code introduces native `<button>`, `<input>`, `<select>`, or `<textarea>` controls without an explicit approved exception.

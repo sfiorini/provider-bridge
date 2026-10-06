@@ -1,7 +1,7 @@
 # Provider Bridge — deployment runbook
 
-Provider Bridge is Stefano's private fork of moon-bridge
-(https://github.com/ZhiYi-R/moon-bridge), living at
+Provider Bridge is Stefano's private fork of an upstream project
+(attribution in README.md), living at
 https://github.com/sfiorini/provider-bridge (private). The fork carries
 the upstream history plus merged local commits — there is no rebase step
 anymore; all changes are committed on `main`.
@@ -51,15 +51,15 @@ this automatically on its daily run).
 
 ## OpenCode Zen free models (auto-synced)
 
-`~/.local/bin/moonbridge-zen-sync` on the Mac (LaunchAgent
-`com.fiorinis.moonbridge-zen-sync`, daily 10:00) reconciles the zen
+`~/.local/bin/providerbridge-zen-sync` on the Mac (LaunchAgent
+`com.fiorinis.providerbridge-zen-sync`, daily 10:00) reconciles the zen
 provider, mirrors `config.yml`, restarts the **provider-bridge**
 container, and regenerates + installs the Codex catalog. The key lives
 at `~/.config/opencode-zen.key`.
 
 ## Architecture notes
 
-- Live config = SQLite config graph (`data/moonbridge.db`, tables
+- Live config = SQLite config graph (`data/providerbridge.db`, tables
   `config_store_*`); `config.yml` is the seed/mirror. Edit the live
   config through the management API (`/api/v1/config/graph`), then sync
   `config.yml` to match (codex_regen.sh reads it).
@@ -69,15 +69,15 @@ at `~/.config/opencode-zen.key`.
 - `data/` must be owned by 65532:65532 and `config.yml` readable by
   nonroot (644) — the container is distroless/nonroot.
 - Mac access: `ssh mini`; codex/Claude Code reach the bridge through the
-  `com.fiorinis.moonbridge-tunnel` LaunchAgent (localhost:38440).
+  `com.fiorinis.providerbridge-tunnel` LaunchAgent (localhost:38440).
 - Management token in `config.yml` (`server.auth_token`).
 
 ## Rollback
 
-The old moon-bridge deployment is kept (stopped) at
-`/opt/docker/moon-bridge` with its image `moonbridge:latest`. To roll
+The old provider-bridge deployment is kept (stopped) at
+`/opt/docker/provider-bridge` with its image `providerbridge:latest`. To roll
 back: `docker compose down` in provider-bridge, `docker compose up -d`
-in moon-bridge. Consumers that need reverting: LibreChat endpoint
+in provider-bridge. Consumers that need reverting: LibreChat endpoint
 (`librechat.yaml.bak.pre-bridge`, `.env.bak.pre-bridge` — recreate api
 container) and Claude Code (`~/.claude/settings.json`, restore
 DeepSeek-direct values).

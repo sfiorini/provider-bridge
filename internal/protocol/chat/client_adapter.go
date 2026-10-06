@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 )
 
 // ClientProtocolID is the registry key for the inbound Chat Completions adapter.

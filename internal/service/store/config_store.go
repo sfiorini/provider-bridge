@@ -1,4 +1,4 @@
-// Package store implements the ConfigStore persistence layer for Moon Bridge.
+// Package store implements the ConfigStore persistence layer for Provider Bridge.
 // It provides a db.Consumer-backed interface for CRUD operations on configuration
 // data, with staging validation and atomic apply.
 package store
@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 
-	"moonbridge/internal/config"
+	"providerbridge/internal/config"
 )
 
 // ErrConfigNotSeeded reports an empty persistence store that has tables but no

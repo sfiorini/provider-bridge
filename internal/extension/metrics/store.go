@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"moonbridge/internal/db"
+	"providerbridge/internal/db"
 )
 
 // Record represents a single request metric row.

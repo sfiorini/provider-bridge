@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-Moon Bridge 是一个 Go 语言编写的 HTTP 代理/协议转换服务器。对外暴露 **OpenAI Responses API**（`/v1/responses`），对内支持 **Anthropic Messages**、**Google Gemini（GenAI）**、**OpenAI Chat Completions** 四种上游协议，以及 OpenAI Responses 直通。
+Provider Bridge 是一个 Go 语言编写的 HTTP 代理/协议转换服务器。对外暴露 **OpenAI Responses API**（`/v1/responses`），对内支持 **Anthropic Messages**、**Google Gemini（GenAI）**、**OpenAI Chat Completions** 四种上游协议，以及 OpenAI Responses 直通。
 
 核心定位：让 Codex CLI（或其他 OpenAI Responses API 客户端）通过一个统一入口访问不同协议的上游 LLM Provider，无需客户端感知协议差异。
 
@@ -136,7 +136,7 @@ flowchart TD
 路由解析优先级：
 
 1. 客户端直接指定 Provider 限定名（`model(provider)` 格式）
-2. Moon Bridge `routes` 配置中的别名映射
+2. Provider Bridge `routes` 配置中的别名映射
 3. Provider `offers` 列表中匹配模型名
 
 ## Provider 协议字段
@@ -173,7 +173,7 @@ type ClientStreamAdapter interface { ... }
 
 ### 跨协议工具调用
 
-协议间工具调用的核心挑战在于格式差异。Moon Bridge 的 `CoreTool` / `CoreContentBlock` 作为中间表示屏蔽差异：
+协议间工具调用的核心挑战在于格式差异。Provider Bridge 的 `CoreTool` / `CoreContentBlock` 作为中间表示屏蔽差异：
 
 - **Anthropic** → `tool_use` / `tool_result` content blocks
 - **OpenAI Response** → `function_call` / `function_call_output` items

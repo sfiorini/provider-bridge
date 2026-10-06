@@ -1,4 +1,4 @@
-# Moon Bridge CookBook
+# Provider Bridge CookBook
 
 > 按目标找做法的菜谱集。每道菜包含食材、步骤、验证方法和排错。
 
@@ -10,7 +10,7 @@
 |---|------|------|------|
 | 0 | [上桌之前](#0-上桌之前) | 2 min | ⭐ |
 | 1 | [5 分钟跑通第一个对话](#1-5-分钟跑通第一个对话) | 5 min | ⭐ |
-| 2 | [把 Codex CLI 接上 Moon Bridge](#2-把-codex-cli-接上-moon-bridge) | 3 min | ⭐⭐ |
+| 2 | [把 Codex CLI 接上 Provider Bridge](#2-把-codex-cli-接上-provider-bridge) | 3 min | ⭐⭐ |
 | 3 | [换成另一个 Provider](#3-换成另一个-provider) | 3 min | ⭐⭐ |
 | 4 | [打开 DeepSeek V4 推理能力](#4-打开-deepseek-v4-推理能力) | 2 min | ⭐ |
 | 5 | [让模型能看图（Visual 扩展）](#5-让模型能看图visual-扩展) | 5 min | ⭐⭐⭐ |
@@ -76,19 +76,19 @@ providers:
       - model: deepseek-chat
 
 routes:
-  moonbridge:
+  providerbridge:
     model: deepseek-chat
     provider: deepseek
 
 defaults:
-  model: moonbridge
+  model: providerbridge
   max_tokens: 4096
 ```
 
 ### 1.2 启动
 
 ```bash
-go run ./cmd/moonbridge
+go run ./cmd/providerbridge
 ```
 
 看到 `Transform server listening on 127.0.0.1:38440` 即成功。终端保持运行，新开一个窗口做下一步。
@@ -99,7 +99,7 @@ go run ./cmd/moonbridge
 curl http://localhost:38440/v1/responses \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "moonbridge",
+    "model": "providerbridge",
     "input": "你好，用一句话介绍一下自己。",
     "max_output_tokens": 100
   }'
@@ -120,9 +120,9 @@ curl http://localhost:38440/v1/responses \
 
 ---
 
-## 2. 把 Codex CLI 接上 Moon Bridge
+## 2. 把 Codex CLI 接上 Provider Bridge
 
-**效果：** Codex CLI 走 Moon Bridge 调用 DeepSeek。
+**效果：** Codex CLI 走 Provider Bridge 调用 DeepSeek。
 
 **食材：**
 - 菜谱 1 已跑通
@@ -130,7 +130,7 @@ curl http://localhost:38440/v1/responses \
 
 **步骤：**
 
-Moon Bridge 自带 Codex 配置生成器。先确认它在运行：
+Provider Bridge 自带 Codex 配置生成器。先确认它在运行：
 
 ```bash
 curl -s http://localhost:38440/v1/models | head -3
@@ -140,8 +140,8 @@ curl -s http://localhost:38440/v1/models | head -3
 
 ```bash
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
-MODEL=$(go run ./cmd/moonbridge -print-codex-model)
-go run ./cmd/moonbridge \
+MODEL=$(go run ./cmd/providerbridge -print-codex-model)
+go run ./cmd/providerbridge \
   -print-codex-config "$MODEL" \
   -codex-base-url "http://127.0.0.1:38440/v1" \
   -codex-home "$CODEX_HOME_DIR" \
@@ -158,13 +158,13 @@ go run ./cmd/moonbridge \
 CODEX_HOME="$CODEX_HOME_DIR" codex --cd "$PWD"
 ```
 
-**验证：** Codex 正常启动，提问后 Moon Bridge 终端出现 `POST /v1/responses` 日志。
+**验证：** Codex 正常启动，提问后 Provider Bridge 终端出现 `POST /v1/responses` 日志。
 
 **搞不定：**
 
 | 问题 | 原因 | 解决 |
 |------|------|------|
-| `connection refused` | Moon Bridge 没启动 | 先跑菜谱 1 |
+| `connection refused` | Provider Bridge 没启动 | 先跑菜谱 1 |
 | 看不懂的错误 | `CODEX_HOME` 指向的目录没有 `models_catalog.json` | 检查 `--codex-home` 生成的路径 |
 ---
 
@@ -192,16 +192,16 @@ providers:
       - model: claude-sonnet-4-6
 
 routes:
-  moonbridge:
+  providerbridge:
     model: claude-sonnet-4-6
     provider: anthropic
 
 defaults:
-  model: moonbridge
+  model: providerbridge
   max_tokens: 4096
 ```
 
-重启 Moon Bridge（Ctrl+C 停掉，再 `go run`），curl 测试。
+重启 Provider Bridge（Ctrl+C 停掉，再 `go run`），curl 测试。
 
 **验证：** 同样请求，回复变成了 Claude 的语气。
 
@@ -244,13 +244,13 @@ provider:
               description: "Extra high reasoning effort"
 
   routes:
-    moonbridge:
+    providerbridge:
       to: "deepseek/deepseek-v4-pro"
 
-  default_model: "moonbridge"
+  default_model: "providerbridge"
 ```
 
-重启 Moon Bridge。
+重启 Provider Bridge。
 
 **验证：** curl 请求加 `"reasoning": {"effort": "high"}`，复杂问题的回复会包含推理过程。
 
@@ -302,16 +302,16 @@ providers:
       - model: kimi-for-coding
 
 routes:
-  moonbridge:
+  providerbridge:
     model: deepseek-v4-pro
     provider: deepseek
 
 defaults:
-  model: moonbridge
+  model: providerbridge
   max_tokens: 4096
 ```
 
-重启 Moon Bridge。
+重启 Provider Bridge。
 
 **验证：** 发一条带图片的请求，模型能描述图片内容。
 
@@ -342,16 +342,16 @@ providers:
       - model: deepseek-chat
 
 routes:
-  moonbridge:
+  providerbridge:
     model: deepseek-chat
     provider: deepseek
 
 defaults:
-  model: moonbridge
+  model: providerbridge
   max_tokens: 4096
 ```
 
-重启 Moon Bridge。
+重启 Provider Bridge。
 
 **验证：** 问时效性问题（如"今天天气"），回复应包含搜索来源。
 
@@ -373,7 +373,7 @@ cache:
   ttl: "5m"
 ```
 
-加到 `config.yml` 顶层，重启 Moon Bridge。
+加到 `config.yml` 顶层，重启 Provider Bridge。
 
 > `mode`：`off`（关闭）、`automatic`（自动）、`explicit`（手动标记，推荐）、`hybrid`（全开）。
 
@@ -398,7 +398,7 @@ provider:
 ### 服务起不来
 
 ```bash
-go run ./cmd/moonbridge -config /path/to/config.yml 2>&1 | head -30
+go run ./cmd/providerbridge -config /path/to/config.yml 2>&1 | head -30
 ```
 
 | 错误 | 原因 |
@@ -417,7 +417,7 @@ go run ./cmd/moonbridge -config /path/to/config.yml 2>&1 | head -30
 curl -s http://localhost:38440/v1/models | head -3
 ```
 
-没输出则 Moon Bridge 未运行；有输出但请求失败则检查 model 名字。
+没输出则 Provider Bridge 未运行；有输出但请求失败则检查 model 名字。
 
 ### Visual 不工作
 

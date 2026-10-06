@@ -22,14 +22,14 @@ import (
 	"sync"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/extension/visual"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/runtime"
-	"moonbridge/internal/service/server"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/extension/visual"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/runtime"
+	"providerbridge/internal/service/server"
 )
 
 // anthropicUpstreamMock is a mock Anthropic Messages upstream that records

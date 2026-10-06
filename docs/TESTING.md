@@ -1,6 +1,6 @@
 # Testing
 
-Moon Bridge 使用 Go 标准库 `testing` 包，无外部测试框架依赖。
+Provider Bridge 使用 Go 标准库 `testing` 包，无外部测试框架依赖。
 
 ## 运行测试
 

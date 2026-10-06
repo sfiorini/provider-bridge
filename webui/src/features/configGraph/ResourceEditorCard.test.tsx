@@ -522,7 +522,7 @@ describe("ResourceEditorCard", () => {
     });
     const route = resource("route", "primary", "Primary Route", {
       to: "primary",
-      model: "moonbridge-default",
+      model: "providerbridge-default",
       provider: "anthropic",
       display_name: "Primary Route"
     }, [
@@ -534,7 +534,7 @@ describe("ResourceEditorCard", () => {
 
     renderWithConsoleProviders(
       <ResourceEditorCard
-        modelDisplayNames={{ "moonbridge-default": "GPT-4o" }}
+        modelDisplayNames={{ "providerbridge-default": "GPT-4o" }}
         resource={route}
         revision="rev-1"
         title="Route"
@@ -572,7 +572,7 @@ describe("ResourceEditorCard", () => {
     });
     const route = resource("route", "primary", "Primary Route", {
       to: "claude-sonnet",
-      model: "moonbridge-default",
+      model: "providerbridge-default",
       provider: "local",
       display_name: "Gemini Flash"
     }, [
@@ -584,7 +584,7 @@ describe("ResourceEditorCard", () => {
 
     renderWithConsoleProviders(
       <ResourceEditorCard
-        modelDisplayNames={{ "moonbridge-default": "GPT-4o" }}
+        modelDisplayNames={{ "providerbridge-default": "GPT-4o" }}
         resource={route}
         revision="rev-1"
         title="Route"

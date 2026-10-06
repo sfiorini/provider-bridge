@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Moon Bridge common script library.
+# Provider Bridge common script library.
 # Source at top of each script: source "${ROOT_DIR}/scripts/lib/common.sh"
 #
 # Expected variables before sourcing (set by caller script):
@@ -75,12 +75,12 @@ setup_build_cache() {
   export GOCACHE="${GOCACHE:-"${ROOT_DIR}/.cache/go-build"}"
 }
 
-build_moonbridge() {
-  local output="${1:?build_moonbridge: output path required}"
-  log "Building Moon Bridge"
+build_providerbridge() {
+  local output="${1:?build_providerbridge: output path required}"
+  log "Building Provider Bridge"
   (
     cd "$ROOT_DIR"
-    go build -o "$output" ./cmd/moonbridge
+    go build -o "$output" ./cmd/providerbridge
   ) 2>&1 | tee -a "$LOG_FILE"
 }
 
@@ -92,7 +92,7 @@ wait_for_server() {
   local deadline=$((SECONDS + 30))
   while (( SECONDS < deadline )); do
     if ! kill -0 "$SERVER_PID" >/dev/null 2>&1; then
-      log_error "Moon Bridge exited before it became ready on ${BASE_ADDR}"
+      log_error "Provider Bridge exited before it became ready on ${BASE_ADDR}"
       return 1
     fi
     if (echo > "/dev/tcp/${HOST}/${PORT}") >/dev/null 2>&1; then
@@ -100,16 +100,16 @@ wait_for_server() {
     fi
     sleep 0.2
   done
-  log_error "Moon Bridge did not start on ${BASE_ADDR}"
+  log_error "Provider Bridge did not start on ${BASE_ADDR}"
   return 1
 }
 
 cleanup_server() {
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" >/dev/null 2>&1; then
-    log "Stopping Moon Bridge"
+    log "Stopping Provider Bridge"
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" >/dev/null 2>&1 || true
-    log "Moon Bridge stopped"
+    log "Provider Bridge stopped"
   fi
 }
 
@@ -121,8 +121,8 @@ register_server_cleanup() {
 }
 
 start_server_background() {
-  log "Starting Moon Bridge on ${BASE_ADDR}"
-  log "Moon Bridge log: ${LOG_FILE}"
+  log "Starting Provider Bridge on ${BASE_ADDR}"
+  log "Provider Bridge log: ${LOG_FILE}"
   (
     cd "$ROOT_DIR"
     "$SERVER_BIN" --config "$CONFIG_FILE"
@@ -144,19 +144,19 @@ load_env_file() {
   if [[ -f "$env_file" ]]; then
     source "$env_file"
   else
-    log_error "moonbridge env file not found at ${env_file}"
+    log_error "providerbridge env file not found at ${env_file}"
     exit 1
   fi
-  if [[ -z "${MOONBRIDGE_ADDR:-}" ]]; then
-    log_error "moonbridge not configured in ${env_file}"
+  if [[ -z "${PROVIDER_BRIDGE_ADDR:-}" ]]; then
+    log_error "providerbridge not configured in ${env_file}"
     exit 1
   fi
-  parse_addr "$MOONBRIDGE_ADDR"
+  parse_addr "$PROVIDER_BRIDGE_ADDR"
 }
 
-verify_moonbridge_alive() {
+verify_providerbridge_alive() {
   if ! (echo > "/dev/tcp/${HOST}/${PORT}") >/dev/null 2>&1; then
-    log_error "Moon Bridge not reachable on ${HOST}:${PORT}"
+    log_error "Provider Bridge not reachable on ${HOST}:${PORT}"
     exit 1
   fi
 }
@@ -171,7 +171,7 @@ validate_mode() {
   for mode in "${allowed[@]}"; do
     [[ "$current" == "$mode" ]] && return 0
   done
-  log_error "moonbridge mode must be one of: ${allowed[*]}, got: ${current}"
+  log_error "providerbridge mode must be one of: ${allowed[*]}, got: ${current}"
   exit 1
 }
 
@@ -255,7 +255,7 @@ if source_path.exists():
 env = settings.get("env")
 env = {str(k): str(v) for k, v in env.items()} if isinstance(env, dict) else {}
 env["ANTHROPIC_BASE_URL"] = base_url
-env["ANTHROPIC_AUTH_TOKEN"] = "moonbridge-proxy-placeholder"
+env["ANTHROPIC_AUTH_TOKEN"] = "providerbridge-proxy-placeholder"
 env.pop("ANTHROPIC_API_KEY", None)
 env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
 settings["includeCoAuthoredBy"] = False
@@ -280,7 +280,7 @@ for key in ["ANTHROPIC_AUTH_TOKEN","ANTHROPIC_API_KEY","ANTHROPIC_BASE_URL","ANT
         lines.append(f"export {key}={shlex.quote(value)}")
 effective_model = env.get("ANTHROPIC_MODEL") or settings.get("model") or ""
 if effective_model:
-    lines.append(f"export MOONBRIDGE_EFFECTIVE_CLAUDE_MODEL={shlex.quote(str(effective_model))}")
+    lines.append(f"export PROVIDER_BRIDGE_EFFECTIVE_CLAUDE_MODEL={shlex.quote(str(effective_model))}")
 env_path.write_text("\n".join(lines) + "\n")
 os.chmod(env_path, 0o600)
 

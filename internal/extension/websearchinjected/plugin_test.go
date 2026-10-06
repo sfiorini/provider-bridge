@@ -3,8 +3,8 @@ package websearchinjected
 import (
 	"testing"
 
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 func TestNewPluginReturnsCorrectName(t *testing.T) {

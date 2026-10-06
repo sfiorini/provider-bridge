@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/service/api"
-	"moonbridge/internal/session"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/service/api"
+	"providerbridge/internal/session"
 )
 
 // Manager handles session lifecycle: lookup, creation, TTL enforcement,

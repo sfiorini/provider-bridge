@@ -122,7 +122,7 @@ describe("apiFetch", () => {
   });
 
   test("normalizes empty error responses", async () => {
-    localStorage.setItem("moonbridge.console.locale", "zh-CN");
+    localStorage.setItem("providerbridge.console.locale", "zh-CN");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("", {
         status: 401,
@@ -138,7 +138,7 @@ describe("apiFetch", () => {
   });
 
   test("normalizes malformed JSON error responses", async () => {
-    localStorage.setItem("moonbridge.console.locale", "zh-CN");
+    localStorage.setItem("providerbridge.console.locale", "zh-CN");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("{", {
         status: 502,

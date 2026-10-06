@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/chat"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/chat"
 )
 
 // ============================================================================
@@ -490,7 +490,7 @@ func TestClient_UserAgent(t *testing.T) {
 	client := chat.NewClient(chat.ClientConfig{
 		BaseURL:   srv.URL,
 		APIKey:    "test-key",
-		UserAgent: "MoonBridge-Test/1.0",
+		UserAgent: "ProviderBridge-Test/1.0",
 		Client:    srv.Client(),
 	})
 
@@ -502,8 +502,8 @@ func TestClient_UserAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if userAgent != "MoonBridge-Test/1.0" {
-		t.Errorf("User-Agent = %q, want MoonBridge-Test/1.0", userAgent)
+	if userAgent != "ProviderBridge-Test/1.0" {
+		t.Errorf("User-Agent = %q, want ProviderBridge-Test/1.0", userAgent)
 	}
 }
 

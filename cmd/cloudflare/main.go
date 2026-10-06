@@ -6,17 +6,17 @@ import (
 	"context"
 	"os"
 
-	"moonbridge/internal/service/app"
+	"providerbridge/internal/service/app"
 
 	"log/slog"
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
-	"moonbridge/internal/logger"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/runtime"
-	"moonbridge/internal/service/server"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/runtime"
+	"providerbridge/internal/service/server"
+	"providerbridge/internal/service/stats"
 
 	"database/sql"
 	"github.com/syumai/workers"
@@ -28,10 +28,10 @@ import (
 func main() {
 	// Config is injected as a single Wrangler secret containing the full
 	// config.yml content. Set with:
-	//   wrangler secret put MOONBRIDGE_CONFIG < config.yml
-	rawConfig := cloudflare.Getenv("MOONBRIDGE_CONFIG")
+	//   wrangler secret put PROVIDER_BRIDGE_CONFIG < config.yml
+	rawConfig := cloudflare.Getenv("PROVIDER_BRIDGE_CONFIG")
 	if rawConfig == "" {
-		slog.Error("MOONBRIDGE_CONFIG environment variable is not set")
+		slog.Error("PROVIDER_BRIDGE_CONFIG environment variable is not set")
 		os.Exit(1)
 	}
 
@@ -45,7 +45,7 @@ func main() {
 
 	if cfg.AuthToken == "" && !isDevEnv() {
 		slog.Error("Worker 生产环境必须配置认证：请在 server.auth_token 中设置 Bearer token，" +
-			"或通过 wrangler secret put MOONBRIDGE_CONFIG 注入包含 auth_token 的配置")
+			"或通过 wrangler secret put PROVIDER_BRIDGE_CONFIG 注入包含 auth_token 的配置")
 		os.Exit(1)
 	}
 

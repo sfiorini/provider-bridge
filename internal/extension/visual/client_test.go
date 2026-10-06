@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 func TestBridgeClientUsesExistingProvider(t *testing.T) {

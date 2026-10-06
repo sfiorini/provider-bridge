@@ -4,7 +4,7 @@ import "context"
 
 type coreHookContextKey string
 
-const coreHookModelAliasKey coreHookContextKey = "moonbridge.core_hook_model_alias"
+const coreHookModelAliasKey coreHookContextKey = "providerbridge.core_hook_model_alias"
 
 // WithCoreHookModelAlias tags a context with the model alias used by Core hooks.
 func WithCoreHookModelAlias(ctx context.Context, modelAlias string) context.Context {

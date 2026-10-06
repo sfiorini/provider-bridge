@@ -1,4 +1,4 @@
-// Package plugin defines the capability-based plugin system for Moon Bridge.
+// Package plugin defines the capability-based plugin system for Provider Bridge.
 //
 // Plugins implement the base Plugin interface plus zero or more capability
 // interfaces. The Registry detects capabilities via type assertions at
@@ -9,7 +9,7 @@ package plugin
 import (
 	"log/slog"
 
-	"moonbridge/internal/config"
+	"providerbridge/internal/config"
 )
 
 // Plugin is the base interface all plugins must implement.

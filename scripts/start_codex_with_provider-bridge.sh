@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-click: build Moon Bridge -> start -> generate Codex config -> launch Codex.
+# One-click: build Provider Bridge -> start -> generate Codex config -> launch Codex.
 set -euo pipefail
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -42,9 +42,9 @@ fi
 CODEX_HOME_DIR="$(cd "$CODEX_HOME_DIR" && pwd 2>/dev/null || echo "$CODEX_HOME_DIR")"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd 2>/dev/null || echo "$PROJECT_DIR")"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CONFIG_FILE="${MOONBRIDGE_CONFIG:-"${ROOT_DIR}/config.yml"}"
-SERVER_BIN="${ROOT_DIR}/.cache/start-codex/moonbridge"
-LOG_FILE="${ROOT_DIR}/logs/moonbridge-codex.log"
+CONFIG_FILE="${PROVIDER_BRIDGE_CONFIG:-"${ROOT_DIR}/config.yml"}"
+SERVER_BIN="${ROOT_DIR}/.cache/start-codex/providerbridge"
+LOG_FILE="${ROOT_DIR}/logs/providerbridge-codex.log"
 
 source "${ROOT_DIR}/scripts/lib/common.sh"
 
@@ -56,7 +56,7 @@ require_command codex
 setup_build_cache
 
 check_config_file
-build_moonbridge "$SERVER_BIN"
+build_providerbridge "$SERVER_BIN"
 
 extract_server_metadata
 validate_mode "$MODE" Transform CaptureResponse

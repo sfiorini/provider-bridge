@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

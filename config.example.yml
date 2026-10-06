@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./config.schema.json
 # =============================================================================
-# MoonBridge Configuration Example
+# ProviderBridge Configuration Example
 # =============================================================================
 # This file documents every configurable field and serves as a live reference.
 # Uncomment and adjust values for your own deployment.
@@ -26,7 +26,7 @@ server:
 
 # --- Defaults ----------------------------------------------------------------
 defaults:
-  model: "moonbridge"
+  model: "provider-bridge"
   max_tokens: 65536
   # system_prompt: ""                               # prepended to every request
 
@@ -111,7 +111,7 @@ extensions:
   db_sqlite:
     enabled: true
     config:
-      path: ./data/moonbridge.db
+      path: ./data/provider-bridge.db
       wal: true
       busy_timeout_ms: 5000
       max_open_conns: 1
@@ -120,7 +120,7 @@ extensions:
   # db_d1:
   #   enabled: true
   #   config:
-  #     binding: MOONBRIDGE_DB
+  #     binding: PROVIDER_BRIDGE_DB
 
   # Metrics: request analytics (optional)
   metrics:
@@ -193,7 +193,7 @@ providers:
     base_url: "https://api.deepseek.com/anthropic"
     api_key: "replace-with-deepseek-api-key"
     version: "2023-06-01"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     web_search:
       support: "auto"
     offers:
@@ -215,7 +215,7 @@ providers:
     base_url: "https://api.kimi.com/coding/"
     api_key: "replace-with-kimi-api-key"
     version: "2023-06-01"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     offers:
       - model: kimi-for-coding
 
@@ -223,7 +223,7 @@ providers:
     protocol: "openai-response"
     base_url: "https://api.openai.com"
     api_key: "replace-with-openai-api-key"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     offers:
       - model: codex-auto-review
 
@@ -232,7 +232,7 @@ providers:
     base_url: "https://api.anthropic.com"
     api_key: "replace-with-anthropic-api-key"
     version: "2023-06-01"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     web_search:
       support: "enabled"
     offers:
@@ -259,10 +259,10 @@ providers:
 # =============================================================================
 # Optional aliases. Provider models are listed directly in the Codex catalog
 # as model(provider) format (e.g. deepseek-v4-pro(deepseek)). Routes only
-# add friendly fallback names like "moonbridge".
+# add friendly fallback names like "provider-bridge".
 # Backward-compatible shorthand: <route>: "provider/upstream-model"
 routes:
-  moonbridge:
+  provider-bridge:
     model: deepseek-v4-pro
     provider: deepseek
   codex-auto-review:

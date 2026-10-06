@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
 )
 
 const PluginName = "kimi_workaround"

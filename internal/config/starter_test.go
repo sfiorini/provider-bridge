@@ -4,12 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"moonbridge/internal/config"
-	dbsqlite "moonbridge/internal/extension/db/sqlite"
+	"providerbridge/internal/config"
+	dbsqlite "providerbridge/internal/extension/db/sqlite"
 )
 
 func TestStarterConfigYAMLBuildsLoadableTransformSQLiteConfig(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "moonbridge", "data", "moonbridge.db")
+	dbPath := filepath.Join(t.TempDir(), "provider-bridge", "data", "provider-bridge.db")
 
 	data, err := config.StarterConfigYAML(dbPath, config.LoadOptions{
 		ExtensionSpecs: dbsqlite.ConfigSpecs(),
@@ -56,7 +56,7 @@ func TestStarterConfigYAMLBuildsLoadableTransformSQLiteConfig(t *testing.T) {
 }
 
 func TestStarterConfigYAMLRejectsRelativeSQLitePath(t *testing.T) {
-	_, err := config.StarterConfigYAML("./data/moonbridge.db", config.LoadOptions{
+	_, err := config.StarterConfigYAML("./data/provider-bridge.db", config.LoadOptions{
 		ExtensionSpecs: dbsqlite.ConfigSpecs(),
 	})
 	if err == nil {

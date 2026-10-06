@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/configgraph"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/stats"
-	mbtrace "moonbridge/internal/service/trace"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/configgraph"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/stats"
+	mbtrace "providerbridge/internal/service/trace"
 )
 
 type probeWebSearchCandidateFunc func(context.Context, string, string) (bool, error)
@@ -25,7 +25,7 @@ func (fn probeWebSearchCandidateFunc) ProbeWebSearchCandidate(ctx context.Contex
 }
 
 func TestWelcomeMessage(t *testing.T) {
-	want := "欢迎使用 Moon Bridge!"
+	want := "欢迎使用 Provider Bridge!"
 
 	if got := WelcomeMessage(); got != want {
 		t.Fatalf("WelcomeMessage() = %q, want %q", got, want)
@@ -37,7 +37,7 @@ func TestRunWritesWelcomeMessage(t *testing.T) {
 
 	Run(&output)
 
-	want := "欢迎使用 Moon Bridge!\n"
+	want := "欢迎使用 Provider Bridge!\n"
 	if got := output.String(); got != want {
 		t.Fatalf("Run() wrote %q, want %q", got, want)
 	}
@@ -45,7 +45,7 @@ func TestRunWritesWelcomeMessage(t *testing.T) {
 
 func TestRunServerSeedsEmptyConfigStoreBeforeServingConfigGraph(t *testing.T) {
 	addr := freeLoopbackAddr(t)
-	dbPath := filepath.Join(t.TempDir(), "moonbridge.db")
+	dbPath := filepath.Join(t.TempDir(), "provider-bridge.db")
 	cfg := firstRunSQLiteConfig(t, addr, dbPath)
 	var output bytes.Buffer
 
@@ -80,7 +80,7 @@ func TestRunServerSeedsEmptyConfigStoreBeforeServingConfigGraph(t *testing.T) {
 		t.Fatal("config graph revision is empty after first-run seed")
 	}
 	for _, want := range []string{
-		"Moon Bridge 监听于 " + addr,
+		"Provider Bridge 监听于 " + addr,
 		"Web Console: http://" + addr + "/console/",
 	} {
 		if !strings.Contains(output.String(), want) {
@@ -112,7 +112,7 @@ func TestResolvePerProviderWebSearchDisabledByConfig(t *testing.T) {
 			"default": {BaseURL: "https://test.example.test", APIKey: "test-key"},
 		},
 		map[string]provider.ModelRoute{
-			"moonbridge": {Name: "claude-test", Provider: "default"},
+			"provider-bridge": {Name: "claude-test", Provider: "default"},
 		},
 	)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestResolvePerProviderWebSearchEnabledByConfig(t *testing.T) {
 			"default": {BaseURL: "https://test.example.test", APIKey: "test-key"},
 		},
 		map[string]provider.ModelRoute{
-			"moonbridge": {Name: "claude-test", Provider: "default"},
+			"provider-bridge": {Name: "claude-test", Provider: "default"},
 		},
 	)
 	if err != nil {
@@ -184,7 +184,7 @@ func TestResolvePerProviderWebSearchFallsBackToGlobal(t *testing.T) {
 			"default": {BaseURL: "https://test.example.test", APIKey: "test-key"},
 		},
 		map[string]provider.ModelRoute{
-			"moonbridge": {Name: "claude-test", Provider: "default"},
+			"provider-bridge": {Name: "claude-test", Provider: "default"},
 		},
 	)
 	if err != nil {
@@ -311,7 +311,7 @@ func TestPricingIndexIncludesProviderModelSlugs(t *testing.T) {
 	// pricing should be indexed by both route aliases AND provider/model slugs.
 	pricing := make(map[string]stats.ModelPricing)
 	routes := map[string]config.RouteEntry{
-		"moonbridge": {
+		"provider-bridge": {
 			Provider:        "deepseek",
 			Model:           "deepseek-v4-pro",
 			InputPrice:      2,
@@ -380,11 +380,11 @@ func TestPricingIndexIncludesProviderModelSlugs(t *testing.T) {
 	sessionStats.SetPricing(pricing)
 
 	// Verify route alias pricing works.
-	cost := sessionStats.ComputeCost("moonbridge", stats.Usage{
+	cost := sessionStats.ComputeCost("provider-bridge", stats.Usage{
 		InputTokens: 1000, OutputTokens: 500,
 	})
 	if cost <= 0 {
-		t.Fatalf("ComputeCost(moonbridge, ...) = %f, want > 0", cost)
+		t.Fatalf("ComputeCost(provider-bridge, ...) = %f, want > 0", cost)
 	}
 
 	// Verify provider/model slug pricing works (this was the bug).
@@ -490,7 +490,7 @@ func firstRunSQLiteConfig(t *testing.T, addr string, dbPath string) config.Confi
 			Addr: addr,
 		},
 		Defaults: config.DefaultsFileConfig{
-			Model:     "moonbridge",
+			Model:     "provider-bridge",
 			MaxTokens: 1024,
 		},
 		Models: map[string]config.ModelDefFileConfig{
@@ -513,7 +513,7 @@ func firstRunSQLiteConfig(t *testing.T, addr string, dbPath string) config.Confi
 			},
 		},
 		Routes: map[string]config.RouteFileConfig{
-			"moonbridge": {
+			"provider-bridge": {
 				Provider: "local",
 				Model:    "local-test-model",
 			},

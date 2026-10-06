@@ -9,7 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"moonbridge/internal/service/webui"
+	"providerbridge/internal/service/webui"
 )
 
 func TestHandlerServesConsoleIndex(t *testing.T) {
@@ -40,7 +40,7 @@ func TestHandlerFallsBackToIndexForClientRoute(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if body := recorder.Body.String(); !strings.Contains(body, "<title>Moon Bridge Console</title>") {
+	if body := recorder.Body.String(); !strings.Contains(body, "<title>Provider Bridge Console</title>") {
 		t.Fatalf("body does not contain index title: %s", body)
 	}
 }
@@ -149,7 +149,7 @@ func embeddedScriptBodies(t *testing.T) []string {
 func testFS() fs.FS {
 	return fstest.MapFS{
 		"index.html": &fstest.MapFile{
-			Data: []byte(`<!doctype html><html><head><title>Moon Bridge Console</title></head><body><div id="root"></div><script type="module" src="/console/assets/app.js"></script></body></html>`),
+			Data: []byte(`<!doctype html><html><head><title>Provider Bridge Console</title></head><body><div id="root"></div><script type="module" src="/console/assets/app.js"></script></body></html>`),
 		},
 		"assets/app.js": &fstest.MapFile{
 			Data: []byte(`console.log("console asset");`),

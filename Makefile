@@ -1,7 +1,7 @@
 .PHONY: test cover cover-html cover-check build webui-install webui-test webui-build build-with-webui
 
 COVERAGE_THRESHOLD := 95
-COVER_PROFILE := /tmp/moonbridge-coverage.out
+COVER_PROFILE := /tmp/providerbridge-coverage.out
 
 build:
 	CGO_ENABLED=0 go build ./...

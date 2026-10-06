@@ -13,13 +13,13 @@ import (
 	"net/http"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/protocol/chat"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/stats"
-	mbtrace "moonbridge/internal/service/trace"
+	"providerbridge/internal/config"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/stats"
+	mbtrace "providerbridge/internal/service/trace"
 )
 
 // ============================================================================

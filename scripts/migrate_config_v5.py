@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["ruamel.yaml"]
 # ///
-"""Migrate MoonBridge config.yml from pre-v5 format to v5 format.
+"""Migrate ProviderBridge config.yml from pre-v5 format to v5 format.
 
 The v5 format separates models from providers and places them at the top level.
 

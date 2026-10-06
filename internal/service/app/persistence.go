@@ -3,7 +3,7 @@ package app
 import (
 	"strings"
 
-	"moonbridge/internal/db"
+	"providerbridge/internal/db"
 )
 
 // ResolvePersistenceActiveProvider chooses the provider name that should be

@@ -3,7 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"moonbridge/internal/modelref"
+	"providerbridge/internal/modelref"
 	"strings"
 )
 
@@ -12,7 +12,7 @@ const (
 	// DefaultConfigPath is kept for callers that need the config file name.
 	// Use XDGDefaultConfigPath to resolve the CLI's default config location.
 	DefaultConfigPath = DefaultConfigFileName
-	AppConfigDirName  = "moonbridge"
+	AppConfigDirName  = "provider-bridge"
 	DefaultAddr       = "127.0.0.1:38440"
 )
 
@@ -447,8 +447,8 @@ func (cfg Config) DefaultModelAlias() string {
 	if cfg.DefaultModel != "" {
 		return cfg.DefaultModel
 	}
-	if _, ok := cfg.Routes["moonbridge"]; ok {
-		return "moonbridge"
+	if _, ok := cfg.Routes["provider-bridge"]; ok {
+		return "provider-bridge"
 	}
 	if len(cfg.Routes) == 1 {
 		for alias := range cfg.Routes {

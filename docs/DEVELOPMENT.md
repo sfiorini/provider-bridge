@@ -9,7 +9,7 @@
 
 ```
 cmd/
-  moonbridge/    # 主入口（二进制）
+  providerbridge/    # 主入口（二进制）
   cloudflare/    # Cloudflare Worker 入口
 
 internal/
@@ -55,7 +55,7 @@ internal/
 
 ```bash
 # 构建二进制
-go build -o moonbridge ./cmd/moonbridge
+go build -o providerbridge ./cmd/providerbridge
 
 # 构建 Cloudflare Worker（WASM）
 go build -o worker.wasm ./cmd/cloudflare
@@ -63,7 +63,7 @@ go build -o worker.wasm ./cmd/cloudflare
 
 ## Web Console 开发
 
-Moon Bridge Console 是嵌入到 Go 二进制中的 Vite/React 前端，生产路径为 `/console/`。
+Provider Bridge Console 是嵌入到 Go 二进制中的 Vite/React 前端，生产路径为 `/console/`。
 
 ```bash
 # 安装前端依赖
@@ -101,7 +101,7 @@ Console 配置页使用配置图 API：
 ```bash
 npm --prefix webui test -- configGraph logs
 npm --prefix webui run e2e
-env GOCACHE=/tmp/moonbridge-go-build GOMODCACHE=/tmp/moonbridge-go-mod go test ./internal/service/api ./internal/service/webui ./internal/service/server
+env GOCACHE=/tmp/providerbridge-go-build GOMODCACHE=/tmp/providerbridge-go-mod go test ./internal/service/api ./internal/service/webui ./internal/service/server
 ```
 
 生产构建产物不会直接提交 `webui/dist/`；`make webui-build` 会把它复制到 `internal/service/webui/dist/`，该目录由 `go:embed` 打包。
@@ -109,7 +109,7 @@ env GOCACHE=/tmp/moonbridge-go-build GOMODCACHE=/tmp/moonbridge-go-mod go test .
 ## 运行
 
 ```bash
-go run ./cmd/moonbridge -config config.yml
+go run ./cmd/providerbridge -config config.yml
 ```
 
 支持热重载：修改配置后通过管理 API 或重启应用应用更改。

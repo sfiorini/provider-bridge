@@ -14,7 +14,7 @@ extensions:
   db_sqlite:
     enabled: true
     config:
-      path: ./data/moonbridge.db
+      path: ./data/provider-bridge.db
       wal: true
       busy_timeout_ms: 5000
       max_open_conns: 1
@@ -23,7 +23,7 @@ cache:
   mode: "off"
 
 defaults:
-  model: "moonbridge"
+  model: "provider-bridge"
   max_tokens: 1024
 
 models:
@@ -38,12 +38,12 @@ providers:
     base_url: "https://api.example.invalid"
     api_key: "replace-with-real-api-key"
     protocol: "openai-chat"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     offers:
       - model: local-test-model
         upstream_name: "replace-with-upstream-model"
 
 routes:
-  moonbridge:
+  provider-bridge:
     model: "replace-with-upstream-model"
     provider: "local"

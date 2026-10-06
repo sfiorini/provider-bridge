@@ -34,12 +34,12 @@ describe("RpcTestPage", () => {
 
   test("renders official Material Web form controls", async () => {
     vi.spyOn(responses, "listResponseModels").mockResolvedValue({
-      models: [{ slug: "moonbridge", name: "Moon Bridge", provider: "route" }]
+      models: [{ slug: "providerbridge", name: "Provider Bridge", provider: "route" }]
     });
 
     const { container } = renderWithConsoleProviders(<RpcTestPage />);
 
-    await screen.findByText("moonbridge");
+    await screen.findByText("providerbridge");
 
     expect(getMaterialSelect(container, "Model")).toBeInTheDocument();
     expect(getMaterialTextField(container, "Input")).toHaveProperty("type", "textarea");
@@ -53,7 +53,7 @@ describe("RpcTestPage", () => {
 
   test("keeps Material selects aligned with single-line text field density", async () => {
     vi.spyOn(responses, "listResponseModels").mockResolvedValue({
-      models: [{ slug: "moonbridge", name: "Moon Bridge", provider: "route" }]
+      models: [{ slug: "providerbridge", name: "Provider Bridge", provider: "route" }]
     });
 
     renderWithConsoleProviders(
@@ -62,7 +62,7 @@ describe("RpcTestPage", () => {
       </MemoryRouter>
     );
 
-    await screen.findByText("moonbridge");
+    await screen.findByText("providerbridge");
 
     const materialSelect = getMaterialSelect(document, "Model");
     const materialTextField = getMaterialTextField(document, "Max Output Tokens");
@@ -83,27 +83,27 @@ describe("RpcTestPage", () => {
 
   test("sends a responses smoke test from Material Web controls and shows latency/result", async () => {
     vi.spyOn(responses, "listResponseModels").mockResolvedValue({
-      models: [{ slug: "moonbridge", name: "Moon Bridge", provider: "route" }]
+      models: [{ slug: "providerbridge", name: "Provider Bridge", provider: "route" }]
     });
     const createResponse = vi.spyOn(responses, "createResponse").mockResolvedValue({
       id: "resp_1",
       status: "completed",
-      model: "moonbridge",
+      model: "providerbridge",
       output: [],
       output_text: "pong"
     });
 
     const { container } = renderWithConsoleProviders(<RpcTestPage />);
 
-    await screen.findByText("moonbridge");
-    setMaterialSelectValue(getMaterialSelect(container, "Model"), "moonbridge");
+    await screen.findByText("providerbridge");
+    setMaterialSelectValue(getMaterialSelect(container, "Model"), "providerbridge");
     setMaterialTextFieldValue(getMaterialTextField(container, "Input"), "ping");
     setMaterialTextFieldValue(getMaterialTextField(container, "Max Output Tokens"), "128");
     setMaterialTextFieldValue(getMaterialTextField(container, "Temperature"), "0.4");
     await submitMaterialForm(container);
 
     await waitFor(() => expect(createResponse).toHaveBeenCalledWith(expect.objectContaining({
-      model: "moonbridge",
+      model: "providerbridge",
       input: "ping",
       max_output_tokens: 128,
       temperature: 0.4

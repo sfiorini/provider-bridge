@@ -1,6 +1,6 @@
-# Moon Bridge 文档
+# Provider Bridge 文档
 
-Moon Bridge 是一个将 OpenAI Responses API（Codex CLI 原生协议）转换为 Anthropic Messages API 请求的透明代理服务器。它使 Codex CLI 用户可以接入任何兼容 Anthropic API 的 LLM 提供商，同时保留完整的响应流式传输、缓存、工具调用和 Web Search 能力。
+Provider Bridge 是一个将 OpenAI Responses API（Codex CLI 原生协议）转换为 Anthropic Messages API 请求的透明代理服务器。它使 Codex CLI 用户可以接入任何兼容 Anthropic API 的 LLM 提供商，同时保留完整的响应流式传输、缓存、工具调用和 Web Search 能力。
 
 ## 文档目录
 

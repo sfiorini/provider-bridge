@@ -1,4 +1,4 @@
-// Package format defines protocol-agnostic Core types for MoonBridge.
+// Package format defines protocol-agnostic Core types for ProviderBridge.
 //
 // This file defines the Adapter interfaces and CorePluginHooks that connect
 // protocol-specific DTOs to the Core intermediate format.

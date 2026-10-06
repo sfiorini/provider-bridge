@@ -1,6 +1,6 @@
 # API 接口
 
-Moon Bridge 对外暴露 OpenAI Responses 兼容端点、模型列表端点和可选的管理 API。
+Provider Bridge 对外暴露 OpenAI Responses 兼容端点、模型列表端点和可选的管理 API。
 
 ## 基础信息
 
@@ -70,12 +70,12 @@ data: {"response": {...}}
 
 列出所有可用模型列表。
 
-响应为 Moon Bridge 目录形态：
+响应为 Provider Bridge 目录形态：
 
 ```json
 {
   "models": [
-    {"slug": "moonbridge", "name": "Moon Bridge", "provider": "route", "model": "claude-sonnet"}
+    {"slug": "providerbridge", "name": "Provider Bridge", "provider": "route", "model": "claude-sonnet"}
   ]
 }
 ```
@@ -133,7 +133,7 @@ data: {"response": {...}}
       "kind": "defaults",
       "id": "main",
       "label": "Defaults",
-      "value": {"model": "moonbridge", "max_tokens": 65536},
+      "value": {"model": "providerbridge", "max_tokens": 65536},
       "schema": {"fields": [{"path": "model", "type": "string", "label": "Model"}]},
       "status": "saved",
       "runtimeImpact": "normal",
@@ -237,7 +237,7 @@ X-Confirm-Secrets: true
 
 ## 与 Codex CLI 集成
 
-在 Codex 配置中指向 Moon Bridge 地址：
+在 Codex 配置中指向 Provider Bridge 地址：
 
 ```toml
 [openai]
@@ -245,4 +245,4 @@ base_url = "http://127.0.0.1:38440/v1"
 api_key = "any-non-empty-value"
 ```
 
-Moon Bridge 自动处理路由和协议转换。
+Provider Bridge 自动处理路由和协议转换。

@@ -1,8 +1,8 @@
 package provider
 
 import (
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/stats"
 )
 
 // BuildProviderDefsFromConfig converts config into provider definition map.

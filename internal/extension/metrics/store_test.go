@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/db"
-	mbtrics "moonbridge/internal/extension/metrics"
+	"providerbridge/internal/db"
+	mbtrics "providerbridge/internal/extension/metrics"
 
 	_ "modernc.org/sqlite"
 )

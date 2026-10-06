@@ -9,7 +9,7 @@ import {
 } from "react";
 import { applyThemeTokens, type ConsoleTheme } from "./tokens";
 
-export const CONSOLE_THEME_STORAGE_KEY = "moonbridge.console.theme";
+export const CONSOLE_THEME_STORAGE_KEY = "providerbridge.console.theme";
 
 type ConsoleThemeContextValue = {
   theme: ConsoleTheme;

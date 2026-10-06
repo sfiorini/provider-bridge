@@ -3,8 +3,8 @@ package config_test
 import (
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/visual"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/visual"
 )
 
 func TestConfigToFileConfigRoundtrip(t *testing.T) {
@@ -19,7 +19,7 @@ server:
   addr: 127.0.0.1:8080
   auth_token: secret-token
 defaults:
-  model: moonbridge
+  model: provider-bridge
   max_tokens: 4096
   system_prompt: "You are a helpful assistant"
 web_search:
@@ -62,10 +62,10 @@ providers:
       - model: claude-fast
         upstream_name: claude-fast-4-20250501
 routes:
-  moonbridge:
+  provider-bridge:
     model: claude-sonnet
     provider: anthropic
-    display_name: "Moonbridge Sonnet"
+    display_name: "Providerbridge Sonnet"
   fast:
     model: claude-fast
     provider: anthropic
@@ -266,7 +266,7 @@ providers:
     offers:
       - model: claude-test
 routes:
-  moonbridge:
+  provider-bridge:
     model: claude-test
     provider: main
 `)
@@ -302,8 +302,8 @@ routes:
 	if cfg2.ProviderDefs["main"].BaseURL != "https://provider.example.test" {
 		t.Fatalf("BaseURL = %q", cfg2.ProviderDefs["main"].BaseURL)
 	}
-	if cfg2.Routes["moonbridge"].Provider != "main" {
-		t.Fatalf("Route provider = %q", cfg2.Routes["moonbridge"].Provider)
+	if cfg2.Routes["provider-bridge"].Provider != "main" {
+		t.Fatalf("Route provider = %q", cfg2.Routes["provider-bridge"].Provider)
 	}
 }
 
@@ -349,7 +349,7 @@ providers:
     offers:
       - model: claude-test
 routes:
-  moonbridge:
+  provider-bridge:
     model: claude-test
     provider: main
     web_search:
@@ -381,10 +381,10 @@ routes:
 		t.Fatalf("provider web_search extra = %#v, want provider-preview", fc.Providers["main"].WebSearch.Extra["provider_tool"])
 	}
 	checkExtensionExtra(t, fc.Providers["main"].Extensions["visual"], &enabled, "provider-extra")
-	if fc.Routes["moonbridge"].WebSearch.Extra["provider_tool"] != "route-preview" {
-		t.Fatalf("route web_search extra = %#v, want route-preview", fc.Routes["moonbridge"].WebSearch.Extra["provider_tool"])
+	if fc.Routes["provider-bridge"].WebSearch.Extra["provider_tool"] != "route-preview" {
+		t.Fatalf("route web_search extra = %#v, want route-preview", fc.Routes["provider-bridge"].WebSearch.Extra["provider_tool"])
 	}
-	checkExtensionExtra(t, fc.Routes["moonbridge"].Extensions["visual"], &enabled, "route-extra")
+	checkExtensionExtra(t, fc.Routes["provider-bridge"].Extensions["visual"], &enabled, "route-extra")
 
 	data, err := fc.MarshalYAML()
 	if err != nil {
@@ -404,8 +404,8 @@ routes:
 	if fc2.Providers["main"].WebSearch.Extra["provider_tool"] != "provider-preview" {
 		t.Fatalf("reloaded provider web_search extra = %#v, want provider-preview", fc2.Providers["main"].WebSearch.Extra["provider_tool"])
 	}
-	if fc2.Routes["moonbridge"].WebSearch.Extra["provider_tool"] != "route-preview" {
-		t.Fatalf("reloaded route web_search extra = %#v, want route-preview", fc2.Routes["moonbridge"].WebSearch.Extra["provider_tool"])
+	if fc2.Routes["provider-bridge"].WebSearch.Extra["provider_tool"] != "route-preview" {
+		t.Fatalf("reloaded route web_search extra = %#v, want route-preview", fc2.Routes["provider-bridge"].WebSearch.Extra["provider_tool"])
 	}
 }
 

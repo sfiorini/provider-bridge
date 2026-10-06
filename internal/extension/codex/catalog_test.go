@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/codex"
-	"moonbridge/internal/extension/visual"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/codex"
+	"providerbridge/internal/extension/visual"
 )
 
 func TestBuildModelInfoFromRouteEnablesApplyPatchFreeform(t *testing.T) {
@@ -102,7 +102,7 @@ func TestBuildModelInfoOmitsReasoningMetadataWhenUnsupported(t *testing.T) {
 func TestGenerateConfigTomlDoesNotSetServiceTier(t *testing.T) {
 	cfg := config.Config{
 		Routes: map[string]config.RouteEntry{
-			"moonbridge": {
+			"provider-bridge": {
 				Provider:      "openai",
 				Model:         "gpt-5.4",
 				ContextWindow: 200000,
@@ -110,7 +110,7 @@ func TestGenerateConfigTomlDoesNotSetServiceTier(t *testing.T) {
 		},
 	}
 	var output bytes.Buffer
-	err := codex.GenerateConfigToml(&output, "moonbridge", "http://127.0.0.1:38440/v1", "",
+	err := codex.GenerateConfigToml(&output, "provider-bridge", "http://127.0.0.1:38440/v1", "",
 		config.ProviderFromGlobalConfig(&cfg), config.PluginFromGlobalConfig(&cfg), config.ServerFromGlobalConfig(&cfg))
 	if err != nil {
 		t.Fatalf("GenerateConfigToml() error = %v", err)
@@ -123,8 +123,8 @@ func TestGenerateConfigTomlDoesNotSetServiceTier(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`model = "moonbridge"`,
-		`model_provider = "moonbridge"`,
+		`model = "provider-bridge"`,
+		`model_provider = "provider-bridge"`,
 		`model_context_window = 200000`,
 		`wire_api = "responses"`,
 	} {

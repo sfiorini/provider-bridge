@@ -8,7 +8,7 @@ describe("generateConfigYAML", () => {
       mode: "Transform",
       server: { addr: "127.0.0.1:38440", auth_token: "secret-token" },
       persistence: { active_provider: "db_sqlite" },
-      defaults: { model: "moonbridge", max_tokens: 4096 },
+      defaults: { model: "providerbridge", max_tokens: 4096 },
       providers: [
         {
           key: "anthropic",
@@ -38,10 +38,10 @@ describe("generateConfigYAML", () => {
       ],
       routes: [
         {
-          alias: "moonbridge",
+          alias: "providerbridge",
           model: "claude-sonnet",
           provider: "anthropic",
-          display_name: "Moon Bridge"
+          display_name: "Provider Bridge"
         }
       ]
     };
@@ -54,7 +54,7 @@ describe("generateConfigYAML", () => {
     expect(parsed.persistence.active_provider).toBe("db_sqlite");
     expect(parsed.providers.anthropic.offers[0].pricing.cache_read_price).toBe(0.3);
     expect(parsed.models["claude-sonnet"].context_window).toBe(200000);
-    expect(parsed.routes.moonbridge.provider).toBe("anthropic");
+    expect(parsed.routes.providerbridge.provider).toBe("anthropic");
   });
 
   test("generates capture response proxy config", () => {

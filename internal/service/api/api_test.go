@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/service/runtime"
-	"moonbridge/internal/service/stats"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/service/runtime"
+	"providerbridge/internal/service/stats"
+	"providerbridge/internal/service/store"
 
 	_ "modernc.org/sqlite"
 )
@@ -239,7 +239,7 @@ func (f *testFixture) request(method, path string, body any) *httptest.ResponseR
 	} else {
 		reqBody = strings.NewReader("")
 	}
-	req := httptest.NewRequest(method, "http://moonbridge.test"+path, reqBody)
+	req := httptest.NewRequest(method, "http://providerbridge.test"+path, reqBody)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

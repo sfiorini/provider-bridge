@@ -36,7 +36,7 @@ console, and a persistent SQLite config graph manageable via a management API.
 
 | Consumer | Wire | Notes |
 |---|---|---|
-| Codex (OpenAI) | Responses | default consumer since the moon-bridge days |
+| Codex (OpenAI) | Responses | default consumer since the provider-bridge days |
 | Claude Code | Anthropic Messages | opus→mistral/zai-glm-5-3, sonnet→deepseek/deepseek-v4-pro, haiku→zen/space-bunny-free |
 | LibreChat | Chat Completions | single "Provider Bridge" endpoint, model list fetched live |
 | Open WebUI | OpenAI type, api_type `responses` | reads `/v1/models` OpenAI shape |
@@ -46,8 +46,7 @@ console, and a persistent SQLite config graph manageable via a management API.
 
 ## 2. Origin and history
 
-**Provider Bridge started as a fork of [moon-bridge](https://github.com/ZhiYi-R/moon-bridge)
-(ZhiYi-R) at upstream commit `c9ae8a8` (October 2026).** Moon-bridge is a
+**Provider Bridge started as a fork of an upstream Codex-oriented proxy at upstream commit `c9ae8a8` (October 2026) — see the attribution line at the bottom of README.md for the upstream project.** It is a
 Codex-oriented proxy whose inbound surface is the OpenAI Responses API only,
 with upstream providers for DeepSeek (Anthropic protocol) and OpenAI-compatible
 endpoints. It was deployed to serve Codex with Mistral-hosted models
@@ -59,19 +58,19 @@ credentials and per-app configuration. That defeated the point of a gateway.
 The project has since **veered from "patched proxy" toward a complete,
 standalone product**: a universal protocol bridge with its own inbound
 protocol adapters, a protocol-agnostic upstream executor, and a consumer
-matrix that spans every major coding/chat harness. The upstream moon-bridge
+matrix that spans every major coding/chat harness. The upstream
 history is preserved in this repo's git log (the fork point is readable, all
 divergence happens in commits after `c9ae8a8`); the plan is to keep pulling
 useful upstream changes opportunistically while the product identity, inbound
 surface, and architecture roadmap are our own.
 
-### 2.1 The moon-bridge patch era (upstream + 5 local commits)
+### 2.1 The upstream patch era (upstream + 5 local commits)
 
-Moon-bridge upstream is DeepSeek/Anthropic-centric; these patches fixed
+The upstream is DeepSeek/Anthropic-centric; these patches fixed
 openai-chat + Codex interop and were carried as a patch series before the
 fork merged them into `main`:
 
-1. **Gate empty reasoning_content replay on provider** — moonbridge emitted
+1. **Gate empty reasoning_content replay on provider** — providerbridge emitted
    `reasoning_content: ""` on replayed assistant tool-call messages for ALL
    chat providers (a DeepSeek-only requirement). Mistral rejects the field
    entirely (HTTP 422): every multi-turn Codex session with tool history
@@ -225,7 +224,7 @@ pick the right HTTP client for the provider.
 - **DeepSeek reasoning replay**: reasoning is cached per session
   (`cacheReasoningForChat`) and prepended to follow-up requests
   (`prependCachedReasoningForChat`/`prependCachedThinking`).
-- **Config graph**: SQLite (`data/moonbridge.db`, `config_store_*` tables) is
+- **Config graph**: SQLite (`data/providerbridge.db`, `config_store_*` tables) is
   the live source of truth, managed via `/api/v1/config/graph`
   (`internal/service/configgraph`); `config.yml` is the seed and mirror
   (and the input for codex catalog generation). Secrets are masked (`***`)
@@ -239,7 +238,7 @@ pick the right HTTP client for the provider.
 
 ### 3.5 House conventions
 
-- Go 1.25+ module `moonbridge` (binary name still `moonbridge` — cosmetic).
+- Go 1.25+ module `providerbridge` (binary name still `providerbridge` — cosmetic).
 - Package docs on every file; Chinese log/error messages in the server
   layer (`"请求完成"`, `"读取请求体失败"`); English code comments.
 - `internal/protocol/*` must not import `internal/service` or
@@ -268,13 +267,13 @@ Gotchas that bite (each caused a real incident):
   diagnostics).
 - Passing `-config /config/config.yml` is required (the compose command does
   it; a bare `docker run` without it silently creates a default config at
-  `$HOME/moonbridge/config.yml`).
-- Copying `moonbridge.db` without its `-wal`/`-shm` siblings loses recent
+  `$HOME/providerbridge/config.yml`).
+- Copying `providerbridge.db` without its `-wal`/`-shm` siblings loses recent
   transactions when the source is running; stop the source container first
   (a clean close checkpoints the WAL — then only the main db is needed).
 
 Consumers connect to `mini:38440`, or from the Mac through the SSH tunnel
-LaunchAgent `com.fiorinis.moonbridge-tunnel` (`localhost:38440`).
+LaunchAgent `com.fiorinis.providerbridge-tunnel` (`localhost:38440`).
 
 ### 4.1 End-to-end verification matrix (run after any meaningful change)
 
@@ -315,7 +314,7 @@ Deployments follow `PATCHES.md`; the update procedure for upstream changes is
 `update.sh` (git pull + rebuild + health check).
 
 Auto-synced provider: the OpenCode Zen free models are reconciled daily by
-`~/.local/bin/moonbridge-zen-sync` on the Mac (LaunchAgent) — it talks to the
+`~/.local/bin/providerbridge-zen-sync` on the Mac (LaunchAgent) — it talks to the
 config graph via the tunnel, mirrors `config.yml`, restarts the container,
 and regenerates + installs the Codex catalog. Don't hand-edit zen models.
 
@@ -332,5 +331,5 @@ Provider Bridge is its own product now. Direction:
   time — until then, the Codex path stays untouched by policy.
 - Polish for a potential public release: docs, example configs, and upstream
   contribution of the generic fixes (tool_use in synthesized streams).
-- The upstream moon-bridge remains a sibling project: pull useful changes,
+- The upstream project remains a sibling: pull useful changes,
   push generic fixes back if they'll take them.

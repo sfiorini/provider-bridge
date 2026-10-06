@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"moonbridge/internal/extension/codextool"
-	"moonbridge/internal/format"
+	"providerbridge/internal/extension/codextool"
+	"providerbridge/internal/format"
 )
 
 // ---------------------------------------------------------------------------

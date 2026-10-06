@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 )
 
 // TestInboundChatStreamToolCalls feeds a canned Core event sequence

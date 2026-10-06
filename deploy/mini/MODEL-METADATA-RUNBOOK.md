@@ -196,7 +196,7 @@ done
 
 - `context_window` hot-reloads; **`web_search` config is startup-only** and needs
   a container restart.
-- Run steps during a quiet window: the Mac `moonbridge-zen-sync` LaunchAgent
+- Run steps during a quiet window: the Mac `providerbridge-zen-sync` LaunchAgent
   mirrors the same graph and can cause revision conflicts.
 
 ## Rollback
@@ -211,6 +211,10 @@ the new one in the opposite order.
 
 # Execution log — 2026-10-06T22:07–22:12Z (17:07–17:12 CDT)
 
+> **Numbering note:** the step numbers below record the *historical execution
+> order* and are marked `(historical numbering)`. The current runbook numbers
+> differ — §4 mirrors `config.yml` and §5 regenerates the Codex catalog.
+
 Executed by an automated agent on host `mini` (SSH from the Mac) against the
 **currently running** bridge (`provider-bridge:latest`, container
 `6b6b6944836b`, `StartedAt=2026-10-06T15:00:25.130245275Z` — the 10:00 CDT
@@ -218,7 +222,7 @@ zen-sync restart). No `docker compose up`/rebuild and no `src` rsync: graph +
 catalog + Mac-settings operations only. Auth token read from `server.auth_token`
 in `/opt/docker/provider-bridge/config.yml` (never printed).
 
-The Mac `moonbridge-zen-sync` LaunchAgent fires daily at **10:00 local (CDT)**;
+The Mac `providerbridge-zen-sync` LaunchAgent fires daily at **10:00 local (CDT)**;
 the operation ran at ~17:10 CDT (next fire 2026-10-07 10:00 CDT) — quiet window
 confirmed (no revision conflicts observed; every PATCH returned `committed` on
 the first attempt).
@@ -279,7 +283,7 @@ committed revision); every other change-set row has a matching commit id.
 No 409/400 occurred; the offer id in the graph is now
 `deepseek/deepseek-flash` (offer ids are derived from `offer.model`).
 
-## Step 4 — regenerate the Codex catalog
+## Step 4 (historical numbering) — regenerate the Codex catalog
 
 ```
 $ cd /opt/docker/provider-bridge && sudo ./codex_regen.sh
@@ -363,7 +367,7 @@ no-ops).
 
 ## S-M2-7 execution (same session)
 
-### Step 5 — mirror `config.yml`
+### Step 5 (historical numbering) — mirror `config.yml`
 
 ```
 headerless  GET /config/export?include_secrets=true          -> 400

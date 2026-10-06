@@ -3,7 +3,7 @@ package visual
 import (
 	"testing"
 
-	"moonbridge/internal/config"
+	"providerbridge/internal/config"
 )
 
 func boolPtr(v bool) *bool {

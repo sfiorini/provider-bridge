@@ -8,7 +8,7 @@ import {
 } from "react";
 import { type Locale, type MessageKey, messages, normalizeLocale } from "./messages";
 
-export const CONSOLE_LOCALE_STORAGE_KEY = "moonbridge.console.locale";
+export const CONSOLE_LOCALE_STORAGE_KEY = "providerbridge.console.locale";
 
 type InterpolationValue = string | number;
 

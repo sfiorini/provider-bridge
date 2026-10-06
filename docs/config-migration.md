@@ -1,6 +1,6 @@
 # 配置迁移
 
-Moon Bridge 还没有公开发布，配置结构变更时会直接切到当前格式，不在运行时保留旧字段别名。旧配置请用迁移脚本做一次性迁移，然后按新结构维护。
+Provider Bridge 还没有公开发布，配置结构变更时会直接切到当前格式，不在运行时保留旧字段别名。旧配置请用迁移脚本做一次性迁移，然后按新结构维护。
 
 ---
 
@@ -45,7 +45,7 @@ provider:
             deepseek_v4:
               enabled: true
   routes:
-    moonbridge:
+    providerbridge:
       to: "deepseek/deepseek-v4-pro"
 ```
 
@@ -66,7 +66,7 @@ models:
         enabled: true
 
 routes:
-  moonbridge:
+  providerbridge:
     model: deepseek-v4-pro
     provider: deepseek
 

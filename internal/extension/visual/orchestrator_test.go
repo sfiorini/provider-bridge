@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 type fakeUpstream struct {

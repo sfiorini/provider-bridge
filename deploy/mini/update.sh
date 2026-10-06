@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # update.sh — pull the provider-bridge repo and redeploy.
 # The local patches are merged into main of github.com/sfiorini/provider-bridge
-# (private fork of ZhiYi-R/moon-bridge); there is no rebase step anymore.
+# (private fork of an upstream project); there is no rebase step anymore.
 # Run as root: sudo /opt/docker/provider-bridge/update.sh
 set -euo pipefail
 ROOT=/opt/docker/provider-bridge

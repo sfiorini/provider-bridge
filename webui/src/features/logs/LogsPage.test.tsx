@@ -268,7 +268,7 @@ function installURLMethods() {
   let blob: Blob | undefined;
   const createObjectURL = vi.fn((nextBlob: Blob) => {
     blob = nextBlob;
-    return "blob:moonbridge-logs";
+    return "blob:providerbridge-logs";
   });
   const revokeObjectURL = vi.fn();
   vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);

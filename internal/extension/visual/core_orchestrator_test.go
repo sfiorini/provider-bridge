@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 )
 
 // fakeCoreUpstream implements CoreProvider for testing the core orchestrator.

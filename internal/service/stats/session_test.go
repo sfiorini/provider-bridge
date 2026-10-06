@@ -34,7 +34,7 @@ func TestWriteSummaryAlwaysIncludesTotalCost(t *testing.T) {
 
 func TestFormatUsageLine(t *testing.T) {
 	line := FormatUsageLine(UsageLineParams{
-		RequestModel: "moonbridge",
+		RequestModel: "provider-bridge",
 		ActualModel:  "deepseek-v4-pro",
 		BillingUsage: BillingUsage{
 			FreshInputTokens:         1_000_000,
@@ -49,7 +49,7 @@ func TestFormatUsageLine(t *testing.T) {
 	})
 
 	for _, want := range []string{
-		"模型: moonbridge ➡️ deepseek-v4-pro",
+		"模型: provider-bridge ➡️ deepseek-v4-pro",
 		"读取 500.00K",
 		"写入 500.00K",
 		"首次 1.00M",

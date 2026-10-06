@@ -12,15 +12,15 @@ import (
 	"fmt"
 	"log/slog"
 
-	"moonbridge/internal/config"
-	visualpkg "moonbridge/internal/extension/visual"
-	"moonbridge/internal/extension/websearchinjected"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/protocol/chat"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/session"
+	"providerbridge/internal/config"
+	visualpkg "providerbridge/internal/extension/visual"
+	"providerbridge/internal/extension/websearchinjected"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/session"
 )
 
 // coreUpstreamOutcome carries the result of upstream execution: either a

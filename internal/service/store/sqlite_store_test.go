@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/store"
 )
 
 func TestSQLiteStoreSeedLoadRoundtrip(t *testing.T) {
@@ -263,8 +263,8 @@ func TestSQLiteStoreSaveConfigOverwritesCurrentConfig(t *testing.T) {
 	if _, ok := stored.ProviderDefs["anthropic"]; ok {
 		t.Fatal("old provider anthropic still exists after direct save")
 	}
-	if _, ok := stored.Routes["moonbridge"]; ok {
-		t.Fatal("old route moonbridge still exists after direct save")
+	if _, ok := stored.Routes["provider-bridge"]; ok {
+		t.Fatal("old route provider-bridge still exists after direct save")
 	}
 	if _, ok := stored.ProviderDefs["openai"]; !ok {
 		t.Fatal("new provider openai missing after direct save")
@@ -354,7 +354,7 @@ func buildTestConfig() *config.Config {
 		TavilyAPIKey:     "tvly-test-key",
 		SearchMaxRounds:  8,
 		Defaults: config.Defaults{
-			Model:        "moonbridge",
+			Model:        "provider-bridge",
 			MaxTokens:    4096,
 			SystemPrompt: "You are a test assistant",
 		},
@@ -408,10 +408,10 @@ func buildTestConfig() *config.Config {
 			},
 		},
 		Routes: map[string]config.RouteEntry{
-			"moonbridge": {
+			"provider-bridge": {
 				Provider:    "anthropic",
 				Model:       "claude-sonnet-4-20250514",
-				DisplayName: "Moonbridge Sonnet",
+				DisplayName: "Providerbridge Sonnet",
 			},
 			"fast": {
 				Provider: "anthropic",

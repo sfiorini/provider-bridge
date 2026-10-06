@@ -54,7 +54,7 @@ function AppShellContent({ content }: { content?: ReactNode }) {
     <div className="app-shell">
       <header className="top-app-bar">
         <div>
-          <p>Moon Bridge</p>
+          <p>Provider Bridge</p>
           <strong>{t("app.console")}</strong>
         </div>
         <div className="top-app-bar__meta">

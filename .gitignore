@@ -16,8 +16,8 @@ helloagents/
 .codex/**
 !.codex/skills/
 .codex/skills/**
-!.codex/skills/moonbridge-webui-design/
-!.codex/skills/moonbridge-webui-design/**
+!.codex/skills/provider-bridge-webui-design/
+!.codex/skills/provider-bridge-webui-design/**
 .claude
 .claude/
 .agents
@@ -38,7 +38,7 @@ FakeHome
 
 # dotenv files
 .env.test
-.moonbridge.env
+.provider-bridge.env
 
 # local runtime config with provider secrets
 config.yml
@@ -68,7 +68,7 @@ webui/playwright-report/
 
 # Wrangler dev vars
 .dev.vars
-/moonbridge
+/providerbridge
 /logs/
 logs/
 !/webui/src/features/logs/

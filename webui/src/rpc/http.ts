@@ -1,8 +1,8 @@
 import { translateMessage } from "../i18n/I18nProvider";
 
 export const API_BASE = "/api/v1";
-export const TOKEN_STORAGE_KEY = "moonbridge.console.token";
-export const REMEMBER_TOKEN_STORAGE_KEY = "moonbridge.console.rememberedToken";
+export const TOKEN_STORAGE_KEY = "providerbridge.console.token";
+export const REMEMBER_TOKEN_STORAGE_KEY = "providerbridge.console.rememberedToken";
 
 let volatileToken = "";
 

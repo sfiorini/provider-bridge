@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"moonbridge/internal/service/configgraph"
+	"providerbridge/internal/service/configgraph"
 )
 
 type createConfigResourceRequest struct {

@@ -12,17 +12,17 @@ import (
 	"syscall"
 
 	"log/slog"
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/codex"
-	"moonbridge/internal/logger"
-	"moonbridge/internal/service/app"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/codex"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/service/app"
 )
 
 const (
 	exitOK          = 0
 	exitRuntimeErr  = 1
 	exitStartupErr  = 2
-	defaultProgName = "moonbridge"
+	defaultProgName = "providerbridge"
 )
 
 func main() {
@@ -87,7 +87,7 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	})
 	if err != nil {
 		writeStartupError(stderr, "配置文件加载失败", resolvedConfigPath, err,
-			"未传 -config 时默认读取 $HOME/moonbridge/config.yml。",
+			"未传 -config 时默认读取 $HOME/provider-bridge/config.yml。",
 			"检查 YAML 语法、字段拼写和缩进。",
 			"确认 provider、routes、developer.proxy 等必填配置都已补齐。",
 			"如果是 protocol 字段，Responses 直通请使用 openai-response。")
@@ -287,7 +287,7 @@ func cleanupTempPath(path string, cause error) error {
 }
 
 func writeStartupError(output io.Writer, title string, configPath string, err error, hints ...string) {
-	fmt.Fprintf(output, "Moon Bridge 启动失败：%s\n", title)
+	fmt.Fprintf(output, "Provider Bridge 启动失败：%s\n", title)
 	if configPath != "" {
 		fmt.Fprintf(output, "配置文件: %s\n", configPath)
 	}

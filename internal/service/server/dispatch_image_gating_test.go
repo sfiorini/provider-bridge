@@ -29,16 +29,16 @@ import (
 	"sync"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/protocol/chat"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/runtime"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/runtime"
 
-	visualpkg "moonbridge/internal/extension/visual"
+	visualpkg "providerbridge/internal/extension/visual"
 )
 
 // dispatchMock records raw upstream request bodies and answers both streaming

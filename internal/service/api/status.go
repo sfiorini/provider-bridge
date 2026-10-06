@@ -5,8 +5,8 @@ import (
 	"sort"
 	"time"
 
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/service/stats"
 )
 
 // ---- Status ----

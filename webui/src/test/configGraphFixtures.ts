@@ -25,7 +25,7 @@ export function configGraphFixture(overrides: Partial<ConfigGraph> = {}): Config
       base_url: "https://api.anthropic.com",
       api_key: "******",
       version: "2023-06-01",
-      user_agent: "MoonBridge",
+      user_agent: "ProviderBridge",
       protocol: "anthropic",
       web_search: { support: "auto" },
       extensions: {}
@@ -99,7 +99,7 @@ export function configGraphFixture(overrides: Partial<ConfigGraph> = {}): Config
     ]),
     resource("extension", "db_sqlite", "db_sqlite", {
       enabled: true,
-      config: { path: "~/.moon-bridge/moonbridge.db" }
+      config: { path: "~/.provider-bridge/provider-bridge.db" }
     }, [
       field("enabled", "Enabled", "boolean", "switch"),
       field("config", "Config", "object", "object")

@@ -1,4 +1,4 @@
-// Package dbsqlite implements a Moon Bridge extension that provides a SQLite
+// Package dbsqlite implements a Provider Bridge extension that provides a SQLite
 // database backend for persistence consumers.
 //
 // Configuration (in extensions.db_sqlite):
@@ -7,7 +7,7 @@
 //	  db_sqlite:
 //	    enabled: true
 //	    config:
-//	      path: ./data/moonbridge.db
+//	      path: ./data/provider-bridge.db
 //	      wal: true
 //	      busy_timeout_ms: 5000
 //	      max_open_conns: 1
@@ -21,9 +21,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
-	"moonbridge/internal/extension/plugin"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
+	"providerbridge/internal/extension/plugin"
 )
 
 const PluginName = "db_sqlite"

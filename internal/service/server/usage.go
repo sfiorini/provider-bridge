@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/stats"
 )
 
 func usageFromAnthropic(protocol string, source string, usage format.CoreUsage, inputIncludesCache bool) plugin.RequestUsage {

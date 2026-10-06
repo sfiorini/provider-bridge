@@ -1,4 +1,4 @@
-// Package google implements the Google Generative AI (Gemini) ProviderAdapter for MoonBridge.
+// Package google implements the Google Generative AI (Gemini) ProviderAdapter for ProviderBridge.
 package google
 
 import "encoding/json"

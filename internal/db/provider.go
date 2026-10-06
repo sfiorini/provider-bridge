@@ -1,4 +1,4 @@
-// Package db defines a generic persistence abstraction layer for Moon Bridge.
+// Package db defines a generic persistence abstraction layer for Provider Bridge.
 //
 // Providers manage database connections (SQLite, D1). Consumers declare table
 // schemas and access the database through a Store interface with table-name

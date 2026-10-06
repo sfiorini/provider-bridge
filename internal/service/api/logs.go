@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"moonbridge/internal/logger"
+	"providerbridge/internal/logger"
 )
 
 type logResponseEntry struct {

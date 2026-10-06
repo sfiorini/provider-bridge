@@ -1,6 +1,6 @@
 # Deployment
 
-Moon Bridge 支持两种部署方式：独立二进制和 Cloudflare Workers WASM。
+Provider Bridge 支持两种部署方式：独立二进制和 Cloudflare Workers WASM。
 
 > 本文档中的基础设施配置（反向代理、Docker Compose 编排等）为示例，请根据实际环境调整。
 
@@ -9,27 +9,27 @@ Moon Bridge 支持两种部署方式：独立二进制和 Cloudflare Workers WAS
 ### 编译
 
 ```bash
-go build -o moonbridge ./cmd/moonbridge
+go build -o providerbridge ./cmd/providerbridge
 ```
 
 ### 运行
 
 ```bash
-./moonbridge -config /path/to/config.yml
+./providerbridge -config /path/to/config.yml
 ```
 
 ### systemd 服务
 
 ```ini
 [Unit]
-Description=Moon Bridge
+Description=Provider Bridge
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/moonbridge -config /etc/moonbridge/config.yml
+ExecStart=/usr/local/bin/providerbridge -config /etc/providerbridge/config.yml
 Restart=always
 RestartSec=5
-User=moonbridge
+User=providerbridge
 
 [Install]
 WantedBy=multi-user.target
@@ -40,7 +40,7 @@ WantedBy=multi-user.target
 ```nginx
 server {
     listen 443 ssl;
-    server_name moonbridge.example.com;
+    server_name providerbridge.example.com;
     location / {
         proxy_pass http://127.0.0.1:38440;
         proxy_set_header Host $host;
@@ -61,15 +61,15 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/moonbridge ./cmd/moonbridge
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/providerbridge ./cmd/providerbridge
 
 FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
-COPY --from=builder /out/moonbridge /app/moonbridge
+COPY --from=builder /out/providerbridge /app/providerbridge
 COPY config.example.yml /app/config.example.yml
 EXPOSE 38440
 USER nonroot:nonroot
-ENTRYPOINT ["/app/moonbridge"]
+ENTRYPOINT ["/app/providerbridge"]
 CMD ["-config", "/config/config.yml", "-addr", "0.0.0.0:38440"]
 ```
 
@@ -77,7 +77,7 @@ CMD ["-config", "/config/config.yml", "-addr", "0.0.0.0:38440"]
 
 ```yaml
 services:
-  moonbridge:
+  providerbridge:
     build: .
     ports: ["38440:38440"]
     volumes:

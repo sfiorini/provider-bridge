@@ -7,10 +7,10 @@ import (
 
 const (
 	DefaultDataDirName       = "data"
-	DefaultSQLiteDBFileName  = "moonbridge.db"
+	DefaultSQLiteDBFileName  = "provider-bridge.db"
 	starterModelName         = "local-starter-model"
 	starterProviderName      = "local"
-	starterRouteName         = "moonbridge"
+	starterRouteName         = "provider-bridge"
 	starterProviderBaseURL   = "https://api.example.invalid"
 	starterProviderAPIKey    = "replace-with-your-provider-api-key"
 	starterProviderProtocol  = ProtocolOpenAIChat

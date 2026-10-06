@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/store"
 )
 
 // ---------------------------------------------------------------------------

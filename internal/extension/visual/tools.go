@@ -1,8 +1,8 @@
 package visual
 
 import (
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 const (

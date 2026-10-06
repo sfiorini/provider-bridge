@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/format"
-	"moonbridge/internal/logger"
-	"moonbridge/internal/protocol/openai"
+	"providerbridge/internal/config"
+	"providerbridge/internal/format"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/protocol/openai"
 )
 
 // Registry holds registered plugins and dispatches to their capabilities.

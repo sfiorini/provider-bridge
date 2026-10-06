@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/config"
-	deepseekv4 "moonbridge/internal/extension/deepseek_v4"
-	"moonbridge/internal/extension/visual"
+	"providerbridge/internal/config"
+	deepseekv4 "providerbridge/internal/extension/deepseek_v4"
+	"providerbridge/internal/extension/visual"
 )
 
 func builtinExtensionSpecsForTest() []config.ExtensionConfigSpec {
@@ -100,7 +100,7 @@ trace:
 	}
 }
 
-func TestXDGDefaultConfigPathUsesHomeMoonbridgeDirectory(t *testing.T) {
+func TestXDGDefaultConfigPathUsesHomeProviderbridgeDirectory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg"))
@@ -109,7 +109,7 @@ func TestXDGDefaultConfigPathUsesHomeMoonbridgeDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("XDGDefaultConfigPath() error = %v", err)
 	}
-	want := filepath.Join(home, "moonbridge", "config.yml")
+	want := filepath.Join(home, "provider-bridge", "config.yml")
 	if got != want {
 		t.Fatalf("XDGDefaultConfigPath() = %q, want %q", got, want)
 	}
@@ -127,7 +127,7 @@ providers:
     offers:
       - model: claude-test
 routes:
-  moonbridge:
+  provider-bridge:
     model: claude-test
     provider: main
 web_search:
@@ -172,7 +172,7 @@ providers:
     offers:
       - model: gpt-image-1.5
 routes:
-  moonbridge:
+  provider-bridge:
     model: deepseek-v4-pro
     provider: deepseek
   image:
@@ -185,17 +185,17 @@ routes:
 	if cfg.ProviderDefs["openai"].Protocol != config.ProtocolOpenAIResponse {
 		t.Fatalf("openai provider = %+v", cfg.ProviderDefs["openai"])
 	}
-	if !cfg.ExtensionEnabled(deepseekv4.PluginName, "moonbridge") {
-		t.Fatalf("ExtensionEnabled(deepseek_v4, moonbridge) = false, want true")
+	if !cfg.ExtensionEnabled(deepseekv4.PluginName, "provider-bridge") {
+		t.Fatalf("ExtensionEnabled(deepseek_v4, provider-bridge) = false, want true")
 	}
 	if cfg.ExtensionEnabled(deepseekv4.PluginName, "image") {
 		t.Fatalf("ExtensionEnabled(deepseek_v4, image) = true, want false")
 	}
-	if cfg.RouteFor("moonbridge").DefaultReasoningLevel != "high" {
-		t.Fatalf("RouteFor(moonbridge).DefaultReasoningLevel = %q", cfg.RouteFor("moonbridge").DefaultReasoningLevel)
+	if cfg.RouteFor("provider-bridge").DefaultReasoningLevel != "high" {
+		t.Fatalf("RouteFor(provider-bridge).DefaultReasoningLevel = %q", cfg.RouteFor("provider-bridge").DefaultReasoningLevel)
 	}
-	if got := len(cfg.RouteFor("moonbridge").SupportedReasoningLevels); got != 2 {
-		t.Fatalf("RouteFor(moonbridge).SupportedReasoningLevels len = %d", got)
+	if got := len(cfg.RouteFor("provider-bridge").SupportedReasoningLevels); got != 2 {
+		t.Fatalf("RouteFor(provider-bridge).SupportedReasoningLevels len = %d", got)
 	}
 	if got := cfg.ModelFor("image"); got != "gpt-image-1.5" {
 		t.Fatalf("ModelFor(image) = %q", got)
@@ -224,7 +224,7 @@ providers:
     offers:
       - model: kimi-vision
 routes:
-  moonbridge:
+  provider-bridge:
     model: deepseek-v4-pro
     provider: deepseek
 extensions:
@@ -239,18 +239,18 @@ extensions:
 	if err != nil {
 		t.Fatalf("LoadFromYAML() error = %v", err)
 	}
-	if !cfg.ExtensionEnabled(visual.PluginName, "moonbridge") {
-		t.Fatal("ExtensionEnabled(visual, moonbridge) = false, want true")
+	if !cfg.ExtensionEnabled(visual.PluginName, "provider-bridge") {
+		t.Fatal("ExtensionEnabled(visual, provider-bridge) = false, want true")
 	}
 	if !cfg.ExtensionEnabled(visual.PluginName, "deepseek/deepseek-v4-pro") {
 		t.Fatal("ExtensionEnabled(visual, deepseek/deepseek-v4-pro) = false, want true")
 	}
-	resolved, _ := cfg.ExtensionConfig(visual.PluginName, "moonbridge").(*visual.Config)
+	resolved, _ := cfg.ExtensionConfig(visual.PluginName, "provider-bridge").(*visual.Config)
 	if resolved == nil {
-		t.Fatal("ExtensionConfig(visual, moonbridge) = nil")
+		t.Fatal("ExtensionConfig(visual, provider-bridge) = nil")
 	}
 	if resolved.Provider != "kimi" || resolved.Model != "kimi-vision" {
-		t.Fatalf("ExtensionConfig(visual, moonbridge) = %+v", resolved)
+		t.Fatalf("ExtensionConfig(visual, provider-bridge) = %+v", resolved)
 	}
 	if resolved.MaxRounds != 3 || resolved.MaxTokens != 1024 {
 		t.Fatalf("ExtensionConfig defaults/overrides = %+v", resolved)
@@ -275,7 +275,7 @@ providers:
     offers:
       - model: kimi-vision
 routes:
-  moonbridge:
+  provider-bridge:
     model: deepseek-v4-pro
     provider: deepseek
 `))
@@ -442,7 +442,7 @@ providers:
     offers:
       - model: deepseek-v4-pro
 routes:
-  moonbridge:
+  provider-bridge:
     model: deepseek-v4-pro
     provider: deepseek
 extensions:
@@ -471,7 +471,7 @@ providers:
     offers:
       - model: gpt-4o
 routes:
-  moonbridge:
+  provider-bridge:
     model: deepseek-v4-pro
     provider: deepseek
 extensions:
@@ -512,7 +512,7 @@ providers:
     offers:
       - model: claude-test
 routes:
-  moonbridge:
+  provider-bridge:
     model: claude-test
     provider: main
 web_search:
@@ -722,7 +722,7 @@ providers:
     base_url: https://provider.example.test
     api_key: upstream-key
 routes:
-  moonbridge:
+  provider-bridge:
     model: ""
     provider: main
 `))
@@ -791,12 +791,12 @@ proxy:
 	}
 }
 
-func TestDefaultModelAliasFallsBackToMoonbridge(t *testing.T) {
+func TestDefaultModelAliasFallsBackToProviderbridge(t *testing.T) {
 	cfg := config.Config{Routes: map[string]config.RouteEntry{
-		"moonbridge": {Provider: "default", Model: "claude-test"},
+		"provider-bridge": {Provider: "default", Model: "claude-test"},
 		"other":      {Provider: "default", Model: "claude-other"},
 	}}
-	if got := cfg.DefaultModelAlias(); got != "moonbridge" {
+	if got := cfg.DefaultModelAlias(); got != "provider-bridge" {
 		t.Fatalf("DefaultModelAlias() = %q", got)
 	}
 }
@@ -804,7 +804,7 @@ func TestDefaultModelAliasFallsBackToMoonbridge(t *testing.T) {
 func TestCodexModelUsesResponseProxyModelInCaptureResponse(t *testing.T) {
 	cfg := config.Config{
 		Mode:         config.ModeCaptureResponse,
-		DefaultModel: "moonbridge",
+		DefaultModel: "provider-bridge",
 		ResponseProxy: config.ResponseProxyConfig{
 			Model: "gpt-capture",
 		},
@@ -817,12 +817,12 @@ func TestCodexModelUsesResponseProxyModelInCaptureResponse(t *testing.T) {
 func TestCodexModelUsesDefaultModelInTransform(t *testing.T) {
 	cfg := config.Config{
 		Mode:         config.ModeTransform,
-		DefaultModel: "moonbridge",
+		DefaultModel: "provider-bridge",
 		ResponseProxy: config.ResponseProxyConfig{
 			Model: "gpt-capture",
 		},
 	}
-	if got := cfg.CodexModel(); got != "moonbridge" {
+	if got := cfg.CodexModel(); got != "provider-bridge" {
 		t.Fatalf("CodexModel() = %q", got)
 	}
 }

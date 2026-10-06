@@ -89,8 +89,8 @@ export const configDescriptions: Record<ConfigPath, ConfigDocEntry> = {
     "mode",
     "运行模式",
     "Run mode",
-    "决定 Moon Bridge 如何处理请求：在协议之间转换，或直接转发给单一上游。",
-    "How Moon Bridge handles requests: convert between formats, or pass straight through to one provider.",
+    "决定 Provider Bridge 如何处理请求：在协议之间转换，或直接转发给单一上游。",
+    "How Provider Bridge handles requests: convert between formats, or pass straight through to one provider.",
     "Transform | CaptureResponse | CaptureAnthropic",
     "Transform"
   ),
@@ -187,8 +187,8 @@ export const configDescriptions: Record<ConfigPath, ConfigDocEntry> = {
     "cache.prompt_caching",
     "启用 Prompt Cache",
     "Enable prompt caching",
-    "允许 Moon Bridge 为支持的上游协议启用 prompt cache。",
-    "Allows Moon Bridge to enable prompt caching for supported upstream protocols.",
+    "允许 Provider Bridge 为支持的上游协议启用 prompt cache。",
+    "Allows Provider Bridge to enable prompt caching for supported upstream protocols.",
     "boolean"
   ),
   "cache.automatic_prompt_cache": entry(
@@ -262,7 +262,7 @@ export const configDescriptions: Record<ConfigPath, ConfigDocEntry> = {
     "请求未指定模型时使用的模型。",
     "Model used when a request doesn't specify one.",
     "string",
-    "moonbridge"
+    "providerbridge"
   ),
   "defaults.max_tokens": entry(
     "defaults.max_tokens",

@@ -104,7 +104,7 @@ var (
 
 ## web_search_injected（注入式 Web Search 模块）
 
-当上游提供商不支持 Anthropic 原生 `web_search_20250305` server tool 时，Moon Bridge 可以改用"注入式"模式——将 `tavily_search` 和 `firecrawl_fetch` 作为 function-type tool 注入请求，由服务端自动执行搜索。
+当上游提供商不支持 Anthropic 原生 `web_search_20250305` server tool 时，Provider Bridge 可以改用"注入式"模式——将 `tavily_search` 和 `firecrawl_fetch` 作为 function-type tool 注入请求，由服务端自动执行搜索。
 
 **位置**：`internal/extension/websearchinjected/`
 
@@ -242,10 +242,10 @@ extensions:
 
 ### CLI 集成
 
-通过 moonbridge 命令行生成 Codex 配置：
+通过 providerbridge 命令行生成 Codex 配置：
 
 ```bash
-moonbridge -config config.yml -print-codex-config my-model
+providerbridge -config config.yml -print-codex-config my-model
 ```
 
 ---
@@ -293,7 +293,7 @@ extensions:
 ## visual（视觉扩展）
 
 
-当主模型本身不具备多模态视觉能力时，Moon Bridge 可以将图片分析任务委派给一个专门的视觉 Provider。`visual` 扩展作为 `ToolInjector` 插件工作，在主模型的对话中注入 `visual_brief` 和 `visual_qa` 两个工具；Server 层通过 `wrapWithVisual()` 将上游 Provider 包装为 `CoreProvider`，在 Core 层拦截视觉工具调用并委派给配置的视觉 Provider。
+当主模型本身不具备多模态视觉能力时，Provider Bridge 可以将图片分析任务委派给一个专门的视觉 Provider。`visual` 扩展作为 `ToolInjector` 插件工作，在主模型的对话中注入 `visual_brief` 和 `visual_qa` 两个工具；Server 层通过 `wrapWithVisual()` 将上游 Provider 包装为 `CoreProvider`，在 Core 层拦截视觉工具调用并委派给配置的视觉 Provider。
 
 **位置**：`internal/extension/visual/`
 
@@ -387,7 +387,7 @@ extensions:
   db_sqlite:
     enabled: true
     config:
-      path: ./data/moonbridge.db
+      path: ./data/providerbridge.db
       wal: true
       busy_timeout_ms: 5000
       max_open_conns: 1
@@ -412,7 +412,7 @@ extensions:
   db_d1:
     enabled: true
     config:
-      binding: MOONBRIDGE_DB
+      binding: PROVIDER_BRIDGE_DB
 ```
 
 ---
@@ -453,7 +453,7 @@ models:
       deepseek_v4:
         enabled: true
 routes:
-  moonbridge:
+  providerbridge:
     model: deepseek-v4-pro
     provider: deepseek
 models:

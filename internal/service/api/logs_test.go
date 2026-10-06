@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/logger"
+	"providerbridge/internal/logger"
 )
 
 func TestGetLogsRecentReturnsNewestRawLinesInOrder(t *testing.T) {
@@ -46,7 +46,7 @@ func TestGetLogsStreamReturnsSSEFrames(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req := httptest.NewRequest("GET", "http://moonbridge.test/logs/stream", nil).WithContext(ctx)
+	req := httptest.NewRequest("GET", "http://providerbridge.test/logs/stream", nil).WithContext(ctx)
 	resp := httptest.NewRecorder()
 
 	done := make(chan struct{}, 1)

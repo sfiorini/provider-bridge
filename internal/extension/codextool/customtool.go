@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 )
 
 // Grammar helpers
@@ -264,12 +264,12 @@ func ApplyPatchProxyCoreTools(name string) []format.CoreTool {
 	return []format.CoreTool{
 		{
 			Name:        ApplyPatchToolName(name, "add_file"),
-			Description: "Create one new file. Moon Bridge reconstructs the raw Codex apply_patch grammar from the result.",
+			Description: "Create one new file. Provider Bridge reconstructs the raw Codex apply_patch grammar from the result.",
 			InputSchema: ApplyPatchSingleOpSchema("add_file"),
 		},
 		{
 			Name:        ApplyPatchToolName(name, "delete_file"),
-			Description: "Delete one file. Moon Bridge reconstructs the raw Codex apply_patch grammar from the result.",
+			Description: "Delete one file. Provider Bridge reconstructs the raw Codex apply_patch grammar from the result.",
 			InputSchema: ApplyPatchSingleOpSchema("delete_file"),
 		},
 		{
@@ -284,7 +284,7 @@ func ApplyPatchProxyCoreTools(name string) []format.CoreTool {
 		},
 		{
 			Name:        ApplyPatchToolName(name, "batch"),
-			Description: "Edit files by providing structured JSON patch operations. Moon Bridge reconstructs the raw Codex apply_patch grammar from the result.",
+			Description: "Edit files by providing structured JSON patch operations. Provider Bridge reconstructs the raw Codex apply_patch grammar from the result.",
 			InputSchema: ApplyPatchProxySchema(),
 		},
 	}

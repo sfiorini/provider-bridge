@@ -3,8 +3,8 @@
 // OpenAIAdapter implements format.ClientAdapter and format.ClientStreamAdapter,
 // converting between OpenAI Responses DTOs and the Core intermediate format.
 //
-// Clean room design: no imports from moonbridge/internal/protocol/bridge/,
-// moonbridge/internal/protocol/anthropic/, or any protocol-specific packages
+// Clean room design: no imports from providerbridge/internal/protocol/bridge/,
+// providerbridge/internal/protocol/anthropic/, or any protocol-specific packages
 // other than the OpenAI DTOs defined in this package.
 package openai
 
@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync"
 
-	"moonbridge/internal/extension/codextool"
-	"moonbridge/internal/format"
+	"providerbridge/internal/extension/codextool"
+	"providerbridge/internal/format"
 )
 
 // ============================================================================

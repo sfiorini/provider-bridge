@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/store"
 )
 
 // ---- Settings ----
@@ -220,7 +220,7 @@ func (r *Router) handleGetConfigExport(w http.ResponseWriter, req *http.Request)
 	}
 
 	w.Header().Set("Content-Type", "application/x-yaml")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=moonbridge-config-%s.yml", time.Now().Format("20060102-150405")))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=providerbridge-config-%s.yml", time.Now().Format("20060102-150405")))
 	w.Write(yamlBytes)
 }
 

@@ -7,12 +7,12 @@ import (
 	"strings"
 
 	"log/slog"
-	"moonbridge/internal/extension/visual"
-	"moonbridge/internal/extension/websearch"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/chat"
-	"moonbridge/internal/protocol/google"
-	openai "moonbridge/internal/protocol/openai"
+	"providerbridge/internal/extension/visual"
+	"providerbridge/internal/extension/websearch"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/google"
+	openai "providerbridge/internal/protocol/openai"
 )
 
 // ============================================================================

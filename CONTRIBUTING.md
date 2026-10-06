@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢您对 Moon Bridge 的关注！欢迎通过 Issue 和 Pull Request 参与贡献。
+感谢您对 Provider Bridge 的关注！欢迎通过 Issue 和 Pull Request 参与贡献。
 
 ## 报告问题
 

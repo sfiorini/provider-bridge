@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/store"
 )
 
 // ---- Offers ----

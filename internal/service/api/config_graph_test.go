@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"testing"
 
-	"moonbridge/internal/config"
-	dbsqlite "moonbridge/internal/extension/db/sqlite"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/service/configgraph"
+	"providerbridge/internal/config"
+	dbsqlite "providerbridge/internal/extension/db/sqlite"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/service/configgraph"
 )
 
 func TestGetConfigGraphReturnsCurrentResources(t *testing.T) {

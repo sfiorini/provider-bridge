@@ -79,7 +79,7 @@ describe("logs RPC client", () => {
   });
 
   test("localizes stream fallback failures from the stored locale", async () => {
-    localStorage.setItem("moonbridge.console.locale", "zh-CN");
+    localStorage.setItem("providerbridge.console.locale", "zh-CN");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 503 }));
 
     await expect(createLogStream()).rejects.toMatchObject({
@@ -89,7 +89,7 @@ describe("logs RPC client", () => {
   });
 
   test("localizes empty stream body failures from the stored locale", async () => {
-    localStorage.setItem("moonbridge.console.locale", "zh-CN");
+    localStorage.setItem("providerbridge.console.locale", "zh-CN");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(null, {
         status: 200

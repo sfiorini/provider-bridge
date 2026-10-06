@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/service/store"
 )
 
 // ---- Routes ----

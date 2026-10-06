@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# codex_regen.sh - regenerate Codex config.toml + models_catalog.json from moonbridge.
+# codex_regen.sh - regenerate Codex config.toml + models_catalog.json from providerbridge.
 # Run as root:  sudo /opt/docker/provider-bridge/codex_regen.sh
 set -euo pipefail
 
@@ -13,7 +13,7 @@ OWNER="${SUDO_USER:-root}"   # hand the generated files to whoever ran sudo
 [ -f "$CFG_YML" ] || { echo "missing $CFG_YML" >&2; exit 1; }
 mkdir -p "$OUT"
 
-# Run moonbridge as root (--user 0:0) inside an ephemeral container so it can
+# Run providerbridge as root (--user 0:0) inside an ephemeral container so it can
 # read config.yml and write the catalog without any uid/gid gymnastics.
 MODEL="$(docker run --rm --user 0:0 \
   -v "$CFG_YML":/config/config.yml:ro \

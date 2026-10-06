@@ -8,7 +8,7 @@ describe("MaterialTextField", () => {
       <MaterialOutlinedTextField
         className="external-field"
         label="Model"
-        value="moonbridge"
+        value="providerbridge"
         onInput={() => undefined}
       />
     );

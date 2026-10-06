@@ -7,23 +7,23 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/codex"
-	"moonbridge/internal/service/app"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/codex"
+	"providerbridge/internal/service/app"
 )
 
 func TestPrintCodexConfigTomlDoesNotSetServiceTier(t *testing.T) {
 	var output bytes.Buffer
 	cfg := config.Config{
 		Routes: map[string]config.RouteEntry{
-			"moonbridge": {
+			"provider-bridge": {
 				Provider:      "openai",
 				Model:         "gpt-5.4",
 				ContextWindow: 200000,
 			},
 		},
 	}
-	err := codex.GenerateConfigToml(&output, "moonbridge", "http://127.0.0.1:38440/v1", "",
+	err := codex.GenerateConfigToml(&output, "provider-bridge", "http://127.0.0.1:38440/v1", "",
 		config.ProviderFromGlobalConfig(&cfg), config.PluginFromGlobalConfig(&cfg), config.ServerFromGlobalConfig(&cfg))
 	if err != nil {
 		t.Fatalf("codex.GenerateConfigToml() error = %v", err)
@@ -36,8 +36,8 @@ func TestPrintCodexConfigTomlDoesNotSetServiceTier(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		`model = "moonbridge"`,
-		`model_provider = "moonbridge"`,
+		`model = "provider-bridge"`,
+		`model_provider = "provider-bridge"`,
 		`model_context_window = 200000`,
 		`wire_api = "responses"`,
 	} {
@@ -82,7 +82,7 @@ routes:
 	}
 	output := stderr.String()
 	for _, want := range []string{
-		"Moon Bridge 启动失败：配置文件加载失败",
+		"Provider Bridge 启动失败：配置文件加载失败",
 		"配置文件: " + configPath,
 		"providers.openai.protocol must be \"anthropic\", \"openai-response\", \"google-genai\", or \"openai-chat\"",
 		"Responses 直通请使用 openai-response",
@@ -93,11 +93,11 @@ routes:
 	}
 }
 
-func TestRunUsesHomeMoonBridgeDefaultConfigPath(t *testing.T) {
+func TestRunUsesHomeProviderBridgeDefaultConfigPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "xdg"))
-	configDir := filepath.Join(home, "moonbridge")
+	configDir := filepath.Join(home, "provider-bridge")
 	if err := os.Mkdir(configDir, 0755); err != nil {
 		t.Fatalf("Mkdir() error = %v", err)
 	}
@@ -157,7 +157,7 @@ func TestRunCreatesStarterConfigWhenDefaultConfigIsMissing(t *testing.T) {
 	if got := strings.TrimSpace(stdout.String()); got != "Transform" {
 		t.Fatalf("stdout = %q, want Transform", got)
 	}
-	configPath := filepath.Join(home, "moonbridge", "config.yml")
+	configPath := filepath.Join(home, "provider-bridge", "config.yml")
 	dirInfo, err := os.Stat(filepath.Dir(configPath))
 	if err != nil {
 		t.Fatalf("stat config dir: %v", err)
@@ -195,7 +195,7 @@ func TestRunCreatesStarterConfigWhenDefaultConfigIsMissing(t *testing.T) {
 	if !ok {
 		t.Fatalf("extensions.db_sqlite.config.path = %#v, want string", sqliteConfig.RawConfig["path"])
 	}
-	wantDBPath := filepath.Join(home, "moonbridge", "data", "moonbridge.db")
+	wantDBPath := filepath.Join(home, "provider-bridge", "data", "provider-bridge.db")
 	if dbPath != wantDBPath {
 		t.Fatalf("sqlite db path = %q, want %q", dbPath, wantDBPath)
 	}
@@ -229,7 +229,7 @@ func TestRunExplicitMissingConfigStillFailsFast(t *testing.T) {
 	}
 	output := stderr.String()
 	for _, want := range []string{
-		"Moon Bridge 启动失败：配置文件加载失败",
+		"Provider Bridge 启动失败：配置文件加载失败",
 		"配置文件: " + missingPath,
 		"read config " + missingPath,
 	} {

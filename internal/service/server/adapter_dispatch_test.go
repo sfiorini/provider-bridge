@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/runtime"
+	"providerbridge/internal/config"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/runtime"
 )
 
 func TestCoreResponseToCoreStreamEmitsUsageOnCompleted(t *testing.T) {

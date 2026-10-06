@@ -1,4 +1,4 @@
-// Package format defines protocol-agnostic Core types for MoonBridge.
+// Package format defines protocol-agnostic Core types for ProviderBridge.
 //
 // This file defines the Registry for protocol Adapter registration and dispatch.
 // The Registry is internal-use only and not exposed to the extension package.

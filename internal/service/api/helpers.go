@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"moonbridge/internal/config"
+	"providerbridge/internal/config"
 )
 
 // ---- JSON response helpers ----

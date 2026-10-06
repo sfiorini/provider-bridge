@@ -1,10 +1,10 @@
 services:
-  moonbridge:
+  providerbridge:
     build:
       context: .
       dockerfile: Dockerfile
-    image: moonbridge:local
-    container_name: moonbridge
+    image: providerbridge:local
+    container_name: providerbridge
     restart: unless-stopped
     command:
       - -config
@@ -21,7 +21,7 @@ services:
     healthcheck:
       test:
         - CMD
-        - /app/moonbridge
+        - /app/providerbridge
         - -config
         - /config/config.yml
         - -addr

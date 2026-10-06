@@ -1,6 +1,6 @@
 // Package codex provides Codex CLI model catalog DTOs and config generation.
 //
-// It is shared by internal/server and cmd/moonbridge to produce
+// It is shared by internal/server and cmd/providerbridge to produce
 // model catalog JSON and Codex config.toml fragments.
 package codex
 
@@ -13,9 +13,9 @@ import (
 	"sort"
 	"strings"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/visual"
-	"moonbridge/internal/modelref"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/visual"
+	"providerbridge/internal/modelref"
 )
 
 // ModelInfo represents a model entry in the OpenAI /v1/models response.
@@ -522,7 +522,7 @@ func GenerateConfigToml(output io.Writer, modelAlias string, baseURL string, cod
 	}
 
 	fmt.Fprintf(output, "model = %q\n", catalogAlias)
-	fmt.Fprintln(output, `model_provider = "moonbridge"`)
+	fmt.Fprintln(output, `model_provider = "provider-bridge"`)
 	if route.ContextWindow > 0 {
 		fmt.Fprintf(output, "model_context_window = %d\n", route.ContextWindow)
 	}
@@ -545,8 +545,8 @@ func GenerateConfigToml(output io.Writer, modelAlias string, baseURL string, cod
 	}
 
 	fmt.Fprintln(output)
-	fmt.Fprintln(output, "[model_providers.moonbridge]")
-	fmt.Fprintln(output, `name = "Moon Bridge"`)
+	fmt.Fprintln(output, "[model_providers.provider-bridge]")
+	fmt.Fprintln(output, `name = "Provider Bridge"`)
 	fmt.Fprintf(output, "base_url = %q\n", valueOrDefault(baseURL, "http://"+config.DefaultAddr+"/v1"))
 	if serverCfg.AuthToken != "" {
 		fmt.Fprintln(output, `requires_openai_auth = true`)

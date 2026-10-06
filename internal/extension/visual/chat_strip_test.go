@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/chat"
 )
 
 func TestStripImagesFromChat_StripsImageURL(t *testing.T) {

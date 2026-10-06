@@ -12,31 +12,31 @@
 ### 获取代码
 
 ```bash
-git clone git@github.com:ZhiYi-R/moon-bridge.git
-cd moon-bridge
+git clone git@github.com:sfiorini/provider-bridge.git
+cd provider-bridge
 ```
 
 ### 编译
 
 ```bash
-go build -o moonbridge ./cmd/moonbridge
+go build -o providerbridge ./cmd/providerbridge
 ```
 
 pacman 或二进制安装后可以直接运行：
 
 ```bash
-moonbridge
+providerbridge
 ```
 
 源码开发也可以直接运行：
 
 ```bash
-go run ./cmd/moonbridge
+go run ./cmd/providerbridge
 ```
 
 ## 2. 配置
 
-未传 `-config` 且 `$HOME/moonbridge/config.yml` 不存在时，Moon Bridge 会自动创建 starter 配置，启用 SQLite，并把数据库放在 `$HOME/moonbridge/data/moonbridge.db`。启动后打开 Web Console：
+未传 `-config` 且 `$HOME/providerbridge/config.yml` 不存在时，Provider Bridge 会自动创建 starter 配置，启用 SQLite，并把数据库放在 `$HOME/providerbridge/data/providerbridge.db`。启动后打开 Web Console：
 
 ```text
 http://127.0.0.1:38440/console/
@@ -87,13 +87,13 @@ routes:
 ## 3. 启动
 
 ```bash
-moonbridge
+providerbridge
 ```
 
 日志输出：
 
 ```
-Moon Bridge 监听于 127.0.0.1:38440
+Provider Bridge 监听于 127.0.0.1:38440
 Web Console: http://127.0.0.1:38440/console/
 INFO HTTP 服务器监听中 addr=127.0.0.1:38440
 ```

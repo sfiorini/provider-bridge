@@ -1,4 +1,4 @@
-// Package metrics implements a Moon Bridge extension that persists per-request
+// Package metrics implements a Provider Bridge extension that persists per-request
 // usage metrics to a database via the foundation/db persistence layer.
 //
 // It implements:
@@ -23,9 +23,9 @@ import (
 	"strconv"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
-	"moonbridge/internal/extension/plugin"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
+	"providerbridge/internal/extension/plugin"
 )
 
 const PluginName = "metrics"

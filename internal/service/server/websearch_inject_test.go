@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/chat"
 )
 
 type wsInjectRTFunc func(*http.Request) (*http.Response, error)

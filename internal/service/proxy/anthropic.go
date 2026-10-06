@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	mbtrace "moonbridge/internal/service/trace"
+	mbtrace "providerbridge/internal/service/trace"
 )
 
 type AnthropicConfig struct {

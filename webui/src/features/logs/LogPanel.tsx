@@ -266,7 +266,7 @@ function downloadLogs(entries: LogEntry[]) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "moonbridge-logs.txt";
+  anchor.download = "providerbridge-logs.txt";
   anchor.click();
   URL.revokeObjectURL(url);
 }

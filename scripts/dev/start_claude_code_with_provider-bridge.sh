@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# One-click: build Moon Bridge -> start (CaptureAnthropic) -> configure -> launch Claude Code.
+# One-click: build Provider Bridge -> start (CaptureAnthropic) -> configure -> launch Claude Code.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" && pwd)"
-CONFIG_FILE="${MOONBRIDGE_CONFIG:-"${ROOT_DIR}/config.yml"}"
+CONFIG_FILE="${PROVIDER_BRIDGE_CONFIG:-"${ROOT_DIR}/config.yml"}"
 CLAUDE_CONFIG_DIR_VALUE="${ROOT_DIR}/FakeHome/ClaudeCode"
-GLOBAL_CLAUDE_SETTINGS="${MOONBRIDGE_CLAUDE_SETTINGS:-"${HOME}/.claude/settings.json"}"
-SERVER_BIN="${ROOT_DIR}/.cache/start-claude/moonbridge"
-LOG_FILE="${ROOT_DIR}/logs/moonbridge-claude-code.log"
+GLOBAL_CLAUDE_SETTINGS="${PROVIDER_BRIDGE_CLAUDE_SETTINGS:-"${HOME}/.claude/settings.json"}"
+SERVER_BIN="${ROOT_DIR}/.cache/start-claude/providerbridge"
+LOG_FILE="${ROOT_DIR}/logs/providerbridge-claude-code.log"
 PROMPT="${1:-}"
 
 source "${ROOT_DIR}/scripts/lib/common.sh"
@@ -22,7 +22,7 @@ require_command python3
 setup_build_cache
 
 check_config_file
-build_moonbridge "$SERVER_BIN"
+build_providerbridge "$SERVER_BIN"
 
 extract_server_metadata
 validate_mode "$MODE" CaptureAnthropic
@@ -34,7 +34,7 @@ mkdir -p "$CLAUDE_CONFIG_DIR_VALUE"
 
 prepare_claude_settings \
   "${CLAUDE_CONFIG_DIR_VALUE}/settings.json" \
-  "${CLAUDE_CONFIG_DIR_VALUE}/moonbridge-env.sh" \
+  "${CLAUDE_CONFIG_DIR_VALUE}/providerbridge-env.sh" \
   "http://${BASE_ADDR}" \
   "$GLOBAL_CLAUDE_SETTINGS" \
   "$MODEL" > >(tee -a "$LOG_FILE") 2>&1
@@ -47,8 +47,8 @@ export CLAUDE_CONFIG_DIR="$CLAUDE_CONFIG_DIR_VALUE"
 log "Starting Claude Code with CLAUDE_CONFIG_DIR=${CLAUDE_CONFIG_DIR}"
 log "Workspace: ${ROOT_DIR}"
 log "Anthropic base URL: http://${BASE_ADDR}"
-if [[ -n "${MOONBRIDGE_EFFECTIVE_CLAUDE_MODEL:-}" ]]; then
-  log "Model: ${MOONBRIDGE_EFFECTIVE_CLAUDE_MODEL}"
+if [[ -n "${PROVIDER_BRIDGE_EFFECTIVE_CLAUDE_MODEL:-}" ]]; then
+  log "Model: ${PROVIDER_BRIDGE_EFFECTIVE_CLAUDE_MODEL}"
 fi
 
 set +e

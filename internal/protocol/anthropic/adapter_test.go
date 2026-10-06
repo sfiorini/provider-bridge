@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 // ---------------------------------------------------------------------------
