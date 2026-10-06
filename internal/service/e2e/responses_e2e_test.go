@@ -140,7 +140,7 @@ func newE2EHandlerWithCache(t *testing.T, cfg config.Config, cacheConfig config.
 
 	return server.New(server.Config{
 		ProviderMgr: providerMgr,
-		AppConfig:   cfg,
+		AppConfig:   config.ServerFromGlobalConfig(&cfg),
 	})
 }
 
