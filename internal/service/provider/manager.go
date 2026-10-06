@@ -644,6 +644,23 @@ func (pm *ProviderManager) ModelMetaFor(modelName string, providerKey string) (M
 }
 
 // ProviderDefForKey returns the full ProviderConfig for a given provider key.
+// ModelSupportsImage reports whether the provider's metadata for the upstream
+// model includes the "image" input modality. Missing metadata (ok == false)
+// means NOT image-capable — the same default filterCandidatesByInput applies.
+func (pm *ProviderManager) ModelSupportsImage(providerKey, upstreamModel string) bool {
+	meta, ok := pm.ModelMetaFor(upstreamModel, providerKey)
+	if !ok {
+		return false
+	}
+	for _, m := range meta.InputModalities {
+		if m == "image" {
+			return true
+		}
+	}
+	return false
+}
+
+// ProviderDefForKey returns the full ProviderConfig for a given provider key.
 func (pm *ProviderManager) ProviderDefForKey(key string) (ProviderConfig, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()

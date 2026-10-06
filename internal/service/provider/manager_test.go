@@ -644,3 +644,43 @@ func TestAnthropicClientAdapter_StreamMessageAcceptsPointerRequest(t *testing.T)
 		t.Fatalf("stream event message = %+v", event.Message)
 	}
 }
+
+// TestModelSupportsImage verifies the capability-driven image lookup keyed on
+// the upstream model name: only metadata that explicitly lists the "image"
+// input modality counts as image-capable, and missing metadata (model or
+// provider) defaults to NOT image-capable.
+func TestModelSupportsImage(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {
+			BaseURL: "https://p.example.test",
+			Models: map[string]ModelMeta{
+				"gpt-vision":   {InputModalities: []string{"text", "image"}},
+				"gpt-text":     {InputModalities: []string{"text"}},
+				"no-modality":  {},
+			},
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+
+	tests := []struct {
+		name     string
+		provider string
+		model    string
+		want     bool
+	}{
+		{"image-capable model", "p", "gpt-vision", true},
+		{"text-only model", "p", "gpt-text", false},
+		{"missing model metadata", "p", "gpt-missing", false},
+		{"unknown provider", "nope", "gpt-vision", false},
+		{"metadata without modalities", "p", "no-modality", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := pm.ModelSupportsImage(tt.provider, tt.model); got != tt.want {
+				t.Errorf("ModelSupportsImage(%q, %q) = %v, want %v", tt.provider, tt.model, got, tt.want)
+			}
+		})
+	}
+}

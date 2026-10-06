@@ -491,6 +491,17 @@ func hasModalityImage(modalities []string) bool {
 	return false
 }
 
+// candidateSupportsImage reports whether the candidate's upstream model can
+// natively consume image inputs. Missing metadata means NOT image-capable
+// (mirrors filterCandidatesByInput), so such candidates get visual assist.
+func (s *Server) candidateSupportsImage(c provider.ProviderCandidate) bool {
+	pm := s.activeProviderManager()
+	if pm == nil {
+		return false
+	}
+	return pm.ModelSupportsImage(c.ProviderKey, c.UpstreamModel)
+}
+
 func newDefaultSessionManager(cfg Config) session.Manager {
 	return session.NewInMemoryManager(&sessionConfigAdapter{runtime: cfg.Runtime, fallback: cfg.AppConfig}, cfg.PluginRegistry)
 }
