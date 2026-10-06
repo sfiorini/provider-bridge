@@ -643,7 +643,6 @@ func (pm *ProviderManager) ModelMetaFor(modelName string, providerKey string) (M
 	return meta, ok
 }
 
-// ProviderDefForKey returns the full ProviderConfig for a given provider key.
 // ModelSupportsImage reports whether the provider's metadata for the upstream
 // model includes the "image" input modality. Missing metadata (ok == false)
 // means NOT image-capable — the same default filterCandidatesByInput applies.

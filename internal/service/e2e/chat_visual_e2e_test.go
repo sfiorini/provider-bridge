@@ -320,6 +320,34 @@ func postChatCompletionsStream(t *testing.T, handler http.Handler, payload map[s
 	return resp.StatusCode, events
 }
 
+// postChatCompletionsJSON POSTs the payload to the live server and returns the
+// HTTP status and the raw JSON response body. It is the non-streaming sibling
+// of postChatCompletionsStream and exercises executeChatUpstream's
+// non-streaming branch.
+func postChatCompletionsJSON(t *testing.T, handler http.Handler, payload map[string]any) (int, string) {
+	t.Helper()
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload error = %v", err)
+	}
+
+	target := httptest.NewServer(handler)
+	t.Cleanup(target.Close)
+
+	resp, err := http.Post(target.URL+"/v1/chat/completions", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("post chat completions error = %v", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read chat completions body error = %v", err)
+	}
+	return resp.StatusCode, string(raw)
+}
+
 // chatStreamContentDelta extracts the content deltas from wire chunk events.
 func chatStreamContentDeltas(events []string) []string {
 	var deltas []string
@@ -386,6 +414,67 @@ func TestChatCompletions_TextOnlyModelStripsImagesOnFallThrough(t *testing.T) {
 	status, events := postChatCompletionsStream(t, h.handler, chatImageRequest())
 	if status != http.StatusOK {
 		t.Fatalf("status = %d, events = %v", status, events)
+	}
+
+	body := h.upstream.lastBody()
+	if !strings.Contains(body, "Image #1 is available to Visual Brief and Visual QA") {
+		t.Fatalf("upstream body missing the visual strip placeholder: %s", body)
+	}
+	if strings.Contains(body, "data:image/png;base64,AAAA") {
+		t.Fatalf("upstream body still contains the image data URL: %s", body)
+	}
+	if h.upstream.count() != 1 {
+		t.Fatalf("upstream call count = %d, want 1", h.upstream.count())
+	}
+	if got := h.vision.count(); got != 0 {
+		t.Fatalf("vision provider call count = %d, want 0 (no orchestrator)", got)
+	}
+}
+
+// TestChatCompletionsNonStreaming_ImageCapableModelReceivesImageUnstripped
+// covers executeChatUpstream's NON-streaming branch for an image-capable
+// upstream: the image_url data URL must reach the upstream and the visual
+// orchestrator must not run.
+func TestChatCompletionsNonStreaming_ImageCapableModelReceivesImageUnstripped(t *testing.T) {
+	h := newChatVisualHarness(t, []string{"text", "image"}, false)
+
+	payload := chatImageRequest()
+	payload["stream"] = false
+	status, raw := postChatCompletionsJSON(t, h.handler, payload)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", status, raw)
+	}
+
+	body := h.upstream.lastBody()
+	if !strings.Contains(body, "data:image/png;base64,AAAA") {
+		t.Fatalf("upstream body missing the image data URL: %s", body)
+	}
+	if strings.Contains(body, "Image #1 is available to Visual Brief and Visual QA") {
+		t.Fatalf("upstream body contains the visual strip placeholder: %s", body)
+	}
+	if h.upstream.count() != 1 {
+		t.Fatalf("upstream call count = %d, want 1", h.upstream.count())
+	}
+	if got := h.vision.count(); got != 0 {
+		t.Fatalf("vision provider call count = %d, want 0 (no orchestrator)", got)
+	}
+}
+
+// TestChatCompletionsNonStreaming_TextOnlyModelStripsImagesOnFallThrough
+// covers executeChatUpstream's NON-streaming strip fall-through: a text-only
+// upstream with visual assist unavailable receives the placeholder, not the
+// image, and the client still gets a normal completion.
+func TestChatCompletionsNonStreaming_TextOnlyModelStripsImagesOnFallThrough(t *testing.T) {
+	h := newChatVisualHarness(t, []string{"text"}, false)
+
+	payload := chatImageRequest()
+	payload["stream"] = false
+	status, raw := postChatCompletionsJSON(t, h.handler, payload)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", status, raw)
+	}
+	if !strings.Contains(raw, "Hello stream") {
+		t.Fatalf("client response missing upstream completion: %s", raw)
 	}
 
 	body := h.upstream.lastBody()

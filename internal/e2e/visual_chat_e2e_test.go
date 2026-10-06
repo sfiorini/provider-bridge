@@ -206,10 +206,17 @@ func TestVisualOnOpenAIChat_OrchestratesBriefAcrossTwoMocks(t *testing.T) {
 // adapter straight to the upstream, which must receive the inbound data URL
 // byte-for-byte, exactly once, and never the visual attachment placeholder.
 //
-// This is the cross-protocol (internal/e2e) counterpart to the server-level
-// TestChatCompletions_ImageCapableModelReceivesImageUnstripped in
-// internal/service/e2e/chat_visual_e2e_test.go: it pins the adapter/provider
-// seam itself rather than the HTTP dispatch around it.
+// SCOPE WARNING: this is a seam-pinning adapter test. It deliberately bypasses
+// Server/ProviderManager, so it does NOT exercise M1's capability gating
+// (needsAssist := coreRequestHasImage && !candidateSupportsImage) and must not
+// be read as coverage of it. It only pins that the chat provider adapter does
+// not strip images that reach it. The M1 gating itself is covered at the
+// server level by:
+//   - internal/service/e2e/chat_visual_e2e_test.go:
+//     TestChatCompletions_ImageCapableModelReceivesImageUnstripped (streaming)
+//     TestChatCompletionsNonStreaming_ImageCapableModelReceivesImageUnstripped
+//   - internal/service/e2e/anthropic_visual_e2e_test.go:
+//     TestAnthropicMessages{NonStreaming,Streaming}_ImageCapableModelReceivesImageUnstripped
 func TestChatAdapterForwardsImagesToImageCapableUpstream(t *testing.T) {
 	ctx := context.Background()
 
@@ -293,4 +300,3 @@ func TestChatAdapterForwardsImagesToImageCapableUpstream(t *testing.T) {
 		t.Fatalf("upstream body contains the visual attachment placeholder: %s", body)
 	}
 }
-
