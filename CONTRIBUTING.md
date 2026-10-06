@@ -1,50 +1,126 @@
-# 贡献指南
+# Contributing to Provider Bridge
 
-感谢您对 Provider Bridge 的关注！欢迎通过 Issue 和 Pull Request 参与贡献。
+Thanks for your interest in Provider Bridge. Issues and pull requests are
+welcome.
 
-## 报告问题
+## Reporting issues
 
-- 使用 GitHub Issues 提交
-- 请包含：运行环境、配置（脱敏后）、复现步骤、预期行为与实际行为
-- 如果涉及 API 错误，请附上请求跟踪日志（启用 `trace.enabled: true`）
+Open a GitHub Issue and include:
 
-## 提交代码
+- Environment: OS, how the bridge is run (binary, Docker, Cloudflare), version
+  or commit.
+- Configuration: the relevant `config.yml` / config-graph sections, **with
+  secrets masked**.
+- Steps to reproduce, the expected behavior, and the actual behavior.
+- For API errors: the status code, the response body, and — if available — the
+  request trace (enable `trace.enabled: true`).
 
-### 分支策略
+## Branch policy
 
-- `main` — 稳定版本
-- `dev` — 开发分支，所有 PR 合入此分支
-- `fix/*` — 修复分支
-- `feat/*` — 功能分支
+The repository is **`main`-only**. `main` is the single long-lived branch: it is
+stable, and every change lands there. There is no `dev` branch.
 
-### 开发流程
+- `main` — the integration branch; all work merges here.
+- `feat/*` — feature branches, cut from `main` and merged back into `main`.
+- `fix/*` — bug-fix branches, cut from `main` and merged back into `main`.
 
-1. Fork 仓库并创建功能分支：`git checkout -b feat/my-feature`
-2. 编写代码并添加测试
-3. 运行全量测试：`go test ./...`
-4. 提交 PR 到 `dev` 分支
+Keep branches short-lived and rebase on `main` before opening a pull request.
 
-### 代码规范
+## Development flow
 
-- 使用 `log/slog` 进行结构化日志
-- 文件名反映职责（如 `candidate_routing_test.go`），不使用项目管理编号
-- 协议转换统一使用 `format.CoreRequest` / `CoreResponse` 作为中间表示
-- 新增 Adapter 必须同时实现 `ProviderAdapter` 和 `ProviderStreamAdapter`
+1. Fork the repository (or branch from `main` if you have write access) and
+   create a topic branch: `git checkout -b feat/my-feature`.
+2. Write the code and the tests together — no untested behavior.
+3. Run the test suites (see [Testing](#testing) below).
+4. Open a pull request **into `main`** with a description of the change and the
+   verification you ran.
+5. A maintainer reviews and merges.
 
-### 测试要求
+Development setup, the project tree, and the build/test commands are documented
+in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). The mini-host build/test commands
+(the canonical dev environment) and the test tiers live in
+[docs/TESTING.md](docs/TESTING.md).
 
-- 单元测试覆盖新增代码
-- 协议转换应包含 E2E 测试（`internal/e2e/`）
-- 运行 `make test` 确保无回归
+## Code standards
 
-## 添加新 Provider
+The authoritative conventions are in
+[docs/DEVELOPMENT-CONVENTIONS.md](docs/DEVELOPMENT-CONVENTIONS.md). In short:
 
-1. 在 `internal/config/config.go` 中添加协议常量（如 `ProtocolMyAdapter`）
-2. 创建 `internal/protocol/<adapter>/` 包，实现 `format.ProviderAdapter` 和 `format.ProviderStreamAdapter`
-3. 在 `internal/service/app/app.go` 中将 Adapter 注册到 `format.Registry`
-4. 在 `internal/service/server/adapter_dispatch.go` 中添加协议分发分支
-5. 添加 E2E 测试到 `internal/e2e/`
+- Use `log/slog` for structured logging; **error and log messages are English**
+  (the production catalog is the same source of truth as
+  `docs/DEVELOPMENT-CONVENTIONS.md`).
+- Name files after the responsibility (for example
+  `candidate_routing_test.go`), not after a project-management number.
+- All protocol conversion goes through the Core intermediate representation
+  (`format.CoreRequest` / `format.CoreResponse`).
+- `internal/protocol/*` must not import `internal/service` or
+  `internal/extension` — dependency direction is enforced by review.
+- Keep commits focused; one story or fix per commit.
 
-## 许可证
+## Testing
 
-本项目采用 [GPL v3](LICENSE) 许可证。提交代码即表示您同意代码在此许可证下发布。
+See [docs/TESTING.md](docs/TESTING.md) for the full tier list (unit tests,
+`internal/e2e/` behind the `e2e` build tag, `internal/service/e2e/` full-HTTP
+tests, and the management API). Minimum expectations:
+
+- Unit-test new code, including protocol conversion (canned Core events →
+  assert the emitted wire payloads).
+- Add or extend an end-to-end test for new adapters and new request paths.
+- Run the suites before opening a pull request:
+
+  ```bash
+  go test ./...
+  go test -tags=e2e ./internal/e2e/... ./internal/service/e2e/...
+  ```
+
+- For any request-path change, also verify a **live streaming request in the
+  consumer's exact wire shape** (see the verification matrix in
+  [docs/TESTING.md](docs/TESTING.md)).
+
+## Adding a provider adapter
+
+A provider adapter converts Core to an upstream wire protocol and back.
+
+1. Add the protocol constant in `internal/config/config.go` (for example
+   `ProtocolMyAdapter`).
+2. Create `internal/protocol/<adapter>/` and implement both
+   `format.ProviderAdapter` (`FromCoreRequest` / `ToCoreResponse`) and
+   `format.ProviderStreamAdapter` (`ToCoreStream` → `StreamResult`). See
+   `internal/format/adapter.go` for the exact interfaces.
+3. Register the adapter in the `format.Registry` wiring in
+   `internal/service/app/app.go`.
+4. Add the protocol's dispatch branch in
+   `internal/service/server/adapter_dispatch.go` (type-assert the produced wire
+   request and pick the HTTP client).
+5. Add unit tests for the conversion and an end-to-end test under
+   `internal/e2e/`, then run the [testing](#testing) commands.
+
+## Adding an inbound ClientAdapter
+
+An inbound ClientAdapter lets a consumer speak a new wire protocol; the bridge
+converts it to Core early and then reuses the shared upstream executor.
+
+1. Create `internal/protocol/<client>/client_adapter.go` and implement
+   `format.ClientAdapter` (`ToCoreRequest` / `FromCoreResponse`). For streaming,
+   also implement `format.ClientStreamAdapter` (`FromCoreStream` → a
+   protocol-specific stream result plus a trace buffer).
+2. Add the HTTP handler (and any token-count style companion endpoint) in
+   `internal/service/server/inbound_handlers.go`, and register the route in
+   `internal/service/server/server.go`.
+3. Register the inbound adapter in the `format.Registry` in
+   `internal/service/app/app.go` (see the `anthropic-messages` and
+   `chat-completions` entries).
+4. Route the handler through the shared `executeCoreUpstream`
+   (`internal/service/server/core_upstream.go`) so web-search injection, visual
+   orchestration, reasoning replay, tracing, and usage stats are reused — do not
+   reimplement them.
+5. Mind the wire-level invariants in `AGENTS.md` §2.3 (tool results as Core role
+   `tool`; Chat `arguments` as JSON strings; empty `json.RawMessage`;
+   `CoreToolCallArgsDone` on the visual path; both stream synthesizers).
+6. Add conversion unit tests (canned Core events → assert emitted wire chunks)
+   and a live streaming verification in the consumer's exact wire shape.
+
+## License
+
+This project is licensed under [GPL v3](LICENSE). By contributing, you agree
+that your contributions are released under the same license.

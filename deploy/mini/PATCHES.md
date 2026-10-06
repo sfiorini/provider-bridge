@@ -65,7 +65,7 @@ at `~/.config/opencode-zen.key`.
   `config.yml` to match (codex_regen.sh reads it).
 - Web-search resolution is startup-only: every web_search config change
   needs `docker restart provider-bridge`. Verify the boot log line
-  `配置启用网页搜索注入模式 provider=<name>`.
+  `config enables web search injection mode provider=<name>`.
 - `data/` must be owned by 65532:65532 and `config.yml` readable by
   nonroot (644) — the container is distroless/nonroot.
 - Mac access: `ssh mini`; codex/Claude Code reach the bridge through the

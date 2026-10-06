@@ -4,7 +4,7 @@
 Provider Bridge is, where it came from, everything that was changed and why,
 how it works inside, and how to develop against it. Any AI agent (or human)
 starting work in this repo should treat this as the authoritative overview
-alongside `PATCHES.md` (deployment runbook) and the code itself.
+alongside `deploy/mini/PATCHES.md` (deployment runbook) and the code itself.
 
 ---
 
@@ -227,7 +227,7 @@ pick the right HTTP client for the provider.
 - **Config graph**: SQLite (`data/provider-bridge.db`, `config_store_*` tables) is
   the live source of truth, managed via `/api/v1/config/graph`
   (`internal/service/configgraph`); `config.yml` is the seed and mirror
-  (and the input for codex catalog generation). Secrets are masked (`***`)
+  (and the input for codex catalog generation). Secrets are masked (`******`)
   in graph GETs — read real keys from `config.yml`.
 - **Model resolution** (`internal/service/provider/manager.go`
   `ResolveModel`): route alias → `provider/model` or `model(provider)` ref →
@@ -258,8 +258,10 @@ pick the right HTTP client for the provider.
 
 Lives on host "mini" at `/opt/docker/provider-bridge`:
 `docker-compose.yml` (container `provider-bridge`, image `provider-bridge:latest`,
-port 38440), `config.yml` (seed/mirror), `data/` (SQLite config graph),
-`PATCHES.md` (deployment runbook incl. rollback), `update.sh`, `codex_regen.sh`.
+port 38440), `config.yml` (seed/mirror), `data/` (SQLite config graph). The
+tracked deployment runbooks live in this repo under `deploy/mini/`
+(`PATCHES.md` incl. rollback, `update.sh`, `codex_regen.sh`,
+`MODEL-METADATA-RUNBOOK.md`, `RENAME-CUTOVER.md`) and are copied onto the host.
 
 Gotchas that bite (each caused a real incident):
 - The container is **distroless nonroot**: `data/` must be owned
@@ -311,8 +313,8 @@ on the Mac: build and test on mini inside `golang:1.27-bookworm`.
     # Note: CI never builds the Dockerfile; the golang:1.27 builder image is first exercised by mini's docker compose build.
 
 **Commit before deploying** so GitHub, mini and the Mac stay in sync.
-Deployments follow `PATCHES.md`; the update procedure for upstream changes is
-`update.sh` (git pull + rebuild + health check).
+Deployments follow `deploy/mini/PATCHES.md`; the update procedure for upstream
+changes is `deploy/mini/update.sh` (git pull + rebuild + health check).
 
 Auto-synced provider: the OpenCode Zen free models are reconciled daily by
 `~/.local/bin/providerbridge-zen-sync` on the Mac (LaunchAgent) — it talks to the

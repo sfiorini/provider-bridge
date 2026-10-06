@@ -1,4 +1,9 @@
-# Provider Bridge — runtime rename cutover (moonbridge → providerbridge)
+# Provider Bridge — runtime rename cutover (legacy name → providerbridge)
+
+> The legacy product/binary name is deliberately **not** reproduced in this
+> repo: the branding gate permits a single mention (the README attribution
+> line). Every occurrence of the old name below is written as `<legacy>`, and
+> the legacy env prefix as `<LEGACY>_*`; the runbook is otherwise verbatim.
 
 Maintenance-window runbook for S-M3-6/S-M3-7. Executes the branding scrub on the
 live deployment: mini host `mini` (`/opt/docker/provider-bridge`) and the Mac
@@ -32,9 +37,9 @@ sudo docker tag "$IMG" provider-bridge:rollback-m3      # rollback image
 sudo docker inspect -f '{{.State.StartedAt}}' provider-bridge
 
 # Mac
-cp -a ~/Library/LaunchAgents/com.fiorinis.moonbridge-tunnel.plist  *.bak-<date>-m3
-cp -a ~/Library/LaunchAgents/com.fiorinis.moonbridge-zen-sync.plist *.bak-<date>-m3
-cp -a ~/.local/bin/moonbridge-zen-sync                              *.bak-<date>-m3
+cp -a ~/Library/LaunchAgents/com.fiorinis.<legacy>-tunnel.plist  *.bak-<date>-m3
+cp -a ~/Library/LaunchAgents/com.fiorinis.<legacy>-zen-sync.plist *.bak-<date>-m3
+cp -a ~/.local/bin/<legacy>-zen-sync                              *.bak-<date>-m3
 cp -a ~/.codex/config.toml ~/.codex/models_catalog.json             *.bak-<date>-m3
 ```
 
@@ -58,27 +63,27 @@ cp -a ~/.codex/config.toml ~/.codex/models_catalog.json             *.bak-<date>
    the WAL, but move the siblings anyway):
    ```sh
    cd /opt/docker/provider-bridge/data
-   mv moonbridge.db provider-bridge.db
-   mv moonbridge.db-wal  provider-bridge.db-wal   # if present
-   mv moonbridge.db-shm  provider-bridge.db-shm   # if present
+   mv <legacy>.db provider-bridge.db
+   mv <legacy>.db-wal  provider-bridge.db-wal   # if present
+   mv <legacy>.db-shm  provider-bridge.db-shm   # if present
    ```
-   > Copying `moonbridge.db` without its `-wal`/`-shm` siblings loses recent
+   > Copying `<legacy>.db` without its `-wal`/`-shm` siblings loses recent
    > transactions when the source is running; stop the source container first
    > (a clean close checkpoints the WAL).
 
    **Also update the DB path in `config.yml`**
-   (`db_sqlite.path: /app/data/moonbridge.db` → `/app/data/provider-bridge.db`)
+   (`db_sqlite.path: /app/data/<legacy>.db` → `/app/data/provider-bridge.db`)
    or the service starts against a fresh empty graph.
 5. **Update `/opt/docker/provider-bridge/docker-compose.yml`:** healthcheck
-   `test:` first element `/app/moonbridge` → `/app/providerbridge`; any other
+   `test:` first element `/app/<legacy>` → `/app/providerbridge`; any other
    old binary/image/container/env reference from the inventory. Keep
    `command: -config /config/config.yml -addr 0.0.0.0:38440` and the volume
    mounts. The service/container stay `provider-bridge` (the network alias
    consumers like affiora use); only the binary path changes.
 6. **Rename the old runtime dirs** (defensive; report if absent):
    ```sh
-   mv ~/.moonbridge ~/.provider-bridge            # if it exists
-   mv .moonbridge.env .provider-bridge.env        # if it exists
+   mv ~/.<legacy> ~/.provider-bridge            # if it exists
+   mv .<legacy>.env .provider-bridge.env        # if it exists
    ```
 7. **Install the repo's `deploy/mini/` files over the mini copies** (repo
    becomes canonical): `PATCHES.md`, `update.sh`, `codex_regen.sh`,
@@ -97,15 +102,15 @@ cp -a ~/.codex/config.toml ~/.codex/models_catalog.json             *.bak-<date>
 ## Mac steps
 
 11. **LaunchAgents:** `launchctl unload` + delete
-    `com.fiorinis.moonbridge-tunnel` and `com.fiorinis.moonbridge-zen-sync`;
+    `com.fiorinis.<legacy>-tunnel` and `com.fiorinis.<legacy>-zen-sync`;
     install renamed equivalents `com.fiorinis.provider-bridge-tunnel` /
     `com.fiorinis.provider-bridge-zen-sync` (Label + ProgramArguments + env
     paths updated), `launchctl load` them.
-12. **Zen sync script:** `mv ~/.local/bin/moonbridge-zen-sync
+12. **Zen sync script:** `mv ~/.local/bin/<legacy>-zen-sync
     ~/.local/bin/provider-bridge-zen-sync`; edit contents — env prefix
-    `MOONBRIDGE_*` → `PROVIDER_BRIDGE_*`, codex provider key `provider-bridge`,
-    stale `sudo docker logs moonbridge` → `provider-bridge`, any
-    `moonbridge`/`moon-bridge` string → the new name. Confirm it parses:
+    `<LEGACY>_*` → `PROVIDER_BRIDGE_*`, codex provider key `provider-bridge`,
+    stale `sudo docker logs <legacy>` → `provider-bridge`, any
+    `<legacy>`/`<legacy>` string → the new name. Confirm it parses:
     `python3 -m py_compile ~/.local/bin/provider-bridge-zen-sync`.
 13. **Codex config:** regenerate `~/.codex/config.toml` +
     `models_catalog.json` so Codex uses `provider-bridge`. If regenerating,
@@ -130,11 +135,11 @@ cp -a ~/.codex/config.toml ~/.codex/models_catalog.json             *.bak-<date>
 
 - Console localStorage reset — users log in again.
 - Stale Codex `config.toml` fails until regenerated.
-- External scripts referencing `MOONBRIDGE_*` or `/app/moonbridge` break loudly.
+- External scripts referencing `<LEGACY>_*` or `/app/<legacy>` break loudly.
 
 ## Rollback
 
-Stop the container, restore `docker-compose.yml` and the `data/moonbridge.db*`
+Stop the container, restore `docker-compose.yml` and the `data/<legacy>.db*`
 names, retag the pre-cutover image back to `provider-bridge:latest`
 (`docker tag provider-bridge:rollback-m3 provider-bridge:latest`), restore the
 old plists/script, and `docker compose up -d`. The config graph content is
@@ -149,8 +154,8 @@ Executed 2026-10-06 on `mini` and the Mac, one maintenance window, config frozen
   `data.bak-2026-10-06-m3/` (db 798720 B + `-shm` 32768 B + `-wal` 852872 B).
 - Running image recorded: `sha256:ff23e96ba4ab…` (StartedAt `2026-10-06T15:00:25Z`);
   tagged `provider-bridge:rollback-m3` for rollback.
-- Mac: `com.fiorinis.moonbridge-*.plist.bak-2026-10-06-m3`,
-  `~/.local/bin/moonbridge-zen-sync.bak-2026-10-06-m3`,
+- Mac: `com.fiorinis.<legacy>-*.plist.bak-2026-10-06-m3`,
+  `~/.local/bin/<legacy>-zen-sync.bak-2026-10-06-m3`,
   `~/.codex/{config.toml,models_catalog.json}.bak-2026-10-06-m3`.
 
 **Mini**
@@ -162,15 +167,15 @@ Executed 2026-10-06 on `mini` and the Mac, one maintenance window, config frozen
 2. `docker compose build` → new image `provider-bridge:latest` =
    `sha256:3c6cd2e05b00…`; binary `/app/providerbridge` (verified with `-help`).
 3. `docker compose stop`. Clean stop checkpointed the WAL: `-wal`/`-shm` were
-   **removed** (only `moonbridge.db`, 798720 B, remained).
-4. `mv moonbridge.db provider-bridge.db` (no siblings to move). `config.yml`
+   **removed** (only `<legacy>.db`, 798720 B, remained).
+4. `mv <legacy>.db provider-bridge.db` (no siblings to move). `config.yml`
    `db_sqlite.path` updated to `/app/data/provider-bridge.db` (required — the
    path is explicit, not the code default). Data ownership stayed `65532:65532`.
-5. `config.yml` `user_agent: moonbridge-codex/1.0` → `provider-bridge-codex/1.0` (3 sites).
+5. `config.yml` `user_agent: <legacy>-codex/1.0` → `provider-bridge-codex/1.0` (3 sites).
 6. `docker-compose.yml`: only the healthcheck binary changed
-   (`/app/moonbridge` → `/app/providerbridge`); service/container/image
+   (`/app/<legacy>` → `/app/providerbridge`); service/container/image
    (`provider-bridge`) and volumes unchanged (keeps the affiora network alias).
-7. `~/.moonbridge` and `.moonbridge.env`: **absent** (nothing to rename).
+7. `~/.<legacy>` and `.<legacy>.env`: **absent** (nothing to rename).
 8. `deploy/mini/` (`PATCHES.md`, `update.sh`, `codex_regen.sh`,
    `MODEL-METADATA-RUNBOOK.md`, this doc) copied over the mini copies;
    scripts `0755`; both reference the new names.
@@ -198,12 +203,12 @@ Executed 2026-10-06 on `mini` and the Mac, one maintenance window, config frozen
 not a bridge defect); `mistral-large-latest` invoked it and answered correctly.
 
 **Mac**
-11. Unloaded + deleted `com.fiorinis.moonbridge-{tunnel,zen-sync}`; installed and
+11. Unloaded + deleted `com.fiorinis.<legacy>-{tunnel,zen-sync}`; installed and
     loaded `com.fiorinis.provider-bridge-{tunnel,zen-sync}` (tunnel same
     `38440:127.0.0.1:38440` forward; logs renamed). Tunnel reachable again (`200`).
-12. `~/.local/bin/moonbridge-zen-sync` → `provider-bridge-zen-sync`; constant
-    `MOONBRIDGE` → `PROVIDER_BRIDGE`, provider key + `docker logs`/`ps` filter
-    → `provider-bridge`, all `moonbridge`/`moon-bridge` strings replaced;
+12. `~/.local/bin/<legacy>-zen-sync` → `provider-bridge-zen-sync`; constant
+    `<LEGACY>` → `PROVIDER_BRIDGE`, provider key + `docker logs`/`ps` filter
+    → `provider-bridge`, all `<legacy>`/`<legacy>` strings replaced;
     `python3 -m py_compile` OK; 0 `moon` matches remain.
 13. `~/.codex/config.toml` updated surgically (hand-maintained sections
     preserved): `model_provider` → `provider-bridge`,
@@ -215,12 +220,12 @@ not a bridge defect); `mistral-large-latest` invoked it and answered correctly.
 **Post-cutover greps**
 - mini live service files (`docker-compose.yml`, `config.yml`,
   `codex_regen.sh`, `update.sh`, `PATCHES.md`, `MODEL-METADATA-RUNBOOK.md`,
-  `generated_configs/`): **0** `moonbridge` hits. The only remaining hits under
+  `generated_configs/`): **0** `<legacy>` hits. The only remaining hits under
   `/opt/docker/provider-bridge` (excluding `src`) are this runbook (which
   documents the rename) and the `*.bak-*` backups.
 - Mac live files (`~/.local/bin`, `~/Library/LaunchAgents`): **0** hits; only the
   `.bak-2026-10-06-m3` copies contain the old name.
 
 **Rollback ready:** `docker tag provider-bridge:rollback-m3 provider-bridge:latest`,
-restore `docker-compose.yml.bak-2026-10-06-m3`, restore `data/moonbridge.db*`
+restore `docker-compose.yml.bak-2026-10-06-m3`, restore `data/<legacy>.db*`
 names, `docker compose up -d`. Not required — cutover green.

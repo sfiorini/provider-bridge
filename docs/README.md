@@ -53,7 +53,7 @@ still being written are marked **planned**.
 | [deploy/mini/update.sh](../deploy/mini/update.sh) | Pull the repo and redeploy the mini container |
 | [deploy/mini/codex_regen.sh](../deploy/mini/codex_regen.sh) | Regenerate Codex `config.toml` and `models_catalog.json` from the bridge |
 | [deploy/mini/MODEL-METADATA-RUNBOOK.md](../deploy/mini/MODEL-METADATA-RUNBOOK.md) | Reconcile live model metadata with the verified `INVENTORY.md` values |
-| [deploy/mini/RENAME-CUTOVER.md](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (`moonbridge` → `providerbridge`) |
+| [deploy/mini/RENAME-CUTOVER.md](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (legacy name → `providerbridge`) |
 
 ## Related
 

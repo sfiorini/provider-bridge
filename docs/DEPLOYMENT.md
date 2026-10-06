@@ -160,7 +160,7 @@ The tracked, first-class deployment surface is [`deploy/mini/`](../deploy/mini/)
 | [`update.sh`](../deploy/mini/update.sh) | Pull `origin/main`, rebuild, restart, health-check |
 | [`codex_regen.sh`](../deploy/mini/codex_regen.sh) | Regenerate Codex `config.toml` + `models_catalog.json` from the bridge |
 | [`MODEL-METADATA-RUNBOOK.md`](../deploy/mini/MODEL-METADATA-RUNBOOK.md) | Reconcile live model metadata with the verified `INVENTORY.md` values |
-| [`RENAME-CUTOVER.md`](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (`moonbridge` → `providerbridge`) |
+| [`RENAME-CUTOVER.md`](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (legacy name → `providerbridge`) |
 
 Typical update:
 
