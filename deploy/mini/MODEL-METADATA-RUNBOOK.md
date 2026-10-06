@@ -176,3 +176,200 @@ previous value. The `config.yml.bak-<date>` copy from step 0 is the pre-change
 snapshot; restore it and regenerate the catalog (step 4) to revert the mirror.
 The `deepseek-flash` rename is reversed by recreating the old slug and deleting
 the new one in the opposite order.
+
+---
+
+# Execution log — 2026-10-06T22:07–22:12Z (17:07–17:12 CDT)
+
+Executed by an automated agent on host `mini` (SSH from the Mac) against the
+**currently running** bridge (`provider-bridge:latest`, container
+`6b6b6944836b`, `StartedAt=2026-10-06T15:00:25.130245275Z` — the 10:00 CDT
+zen-sync restart). No `docker compose up`/rebuild and no `src` rsync: graph +
+catalog + Mac-settings operations only. Auth token read from `server.auth_token`
+in `/opt/docker/provider-bridge/config.yml` (never printed).
+
+The Mac `moonbridge-zen-sync` LaunchAgent fires daily at **10:00 local (CDT)**;
+the operation ran at ~17:10 CDT (next fire 2026-10-07 10:00 CDT) — quiet window
+confirmed (no revision conflicts observed; every PATCH returned `committed` on
+the first attempt).
+
+## Step 0 — backup
+
+```
+$ sudo cp -n .../config.yml .../config.yml.bak-2026-10-06-m2
+-rw-r--r-- 1 root root 9855 Oct  6 22:07 .../config.yml.bak-2026-10-06-m2
+```
+Previous backups (`config.yml.bak-2026-10-05-221630-minio`, `-visualfix`) left
+intact.
+
+## Step 1 — revision before
+
+```
+GET /api/v1/config/graph -> .revision = 1791298818647652677
+```
+
+## Step 2 — metadata change set (all `{"result":"committed",...}`)
+
+```
+model  mistral-medium-3.5      max_output_tokens 209715  => committed 1791324610417915819
+model  mistral-large-latest    context_window    131072  => committed 1791324610665091479
+model  mistral-large-latest    max_output_tokens 8191    => committed 1791324610784972587
+model  devstral-latest         context_window    131072  => committed 1791324610902298686
+model  devstral-latest         max_output_tokens 0       => committed 1791324611019093107
+model  magistral-medium-latest max_output_tokens 8192    => committed 1791324611140975113
+model  space-bunny-free        max_output_tokens 0       => committed 1791324611254853224
+route  devstral-latest         context_window    131072  => committed 1791324611367027819
+route  mistral-large-latest    context_window    131072  => committed 1791324611477773636
+```
+
+Value `0` on `max_output_tokens` is the "leave unset" encoding: the field is
+`omitempty`, so it is omitted from the graph/export (devstral-latest,
+space-bunny-free are undocumented per INVENTORY.md).
+
+## Step 3 — rename `deepseek-v4-flash` -> `deepseek-flash`
+
+```
+(a) POST /config/resources/model {"id":"deepseek-flash", full metadata copy of deepseek-v4-flash}
+    => committed 1791324611654080828
+(b) PATCH provider_offer deepseek/deepseek-v4-flash .model = "deepseek-flash"
+    => committed 1791324611750222864
+(c) PATCH route deepseek-flash .model = "deepseek-flash"
+    => committed 1791324611866369241
+(d) DELETE /config/resources/model/deepseek-v4-flash
+    => committed 1791324611976173499
+(e) GET /api/v1/models/deepseek-flash      -> 200
+    GET /api/v1/models/deepseek-v4-flash  -> 404
+```
+
+No 409/400 occurred; the offer id in the graph is now
+`deepseek/deepseek-flash` (offer ids are derived from `offer.model`).
+
+## Step 4 — regenerate the Codex catalog
+
+```
+$ cd /opt/docker/provider-bridge && sudo ./codex_regen.sh
+Wrote configs for model 'zai-glm-5-3' (owner: stefano)
+```
+
+`generated_configs/config.toml`:
+
+```
+model = "zai-glm-5-3"
+model_context_window = 1000000
+model_max_output_tokens = 131072
+```
+
+(`zai-glm-5-3` = the default route; both values match INVENTORY.md.) A second
+`codex_regen.sh` run was required **after** step 5's mirror, because
+`codex_regen.sh` reads `config.yml`, not the graph: the pre-mirror catalog still
+contained `deepseek-v4-flash`; the post-mirror catalog contains `deepseek-flash`
+(12 entries).
+
+## Hot-reload evidence (no restart)
+
+```
+docker inspect -f '{{.State.StartedAt}}' provider-bridge
+before: 2026-10-06T15:00:25.130245275Z
+after : 2026-10-06T15:00:25.130245275Z   (identical)
+```
+
+## Acceptance — `GET /api/v1/models/<slug>`
+
+```
+zai-glm-5-3              cw=1000000 mo=131072 im=[text]
+zai-glm-5-2              cw=1000000 mo=131072 im=[text]
+deepseek-v4-pro          cw=1000000 mo=384000 im=[text]
+deepseek-flash           cw=1000000 mo=384000 im=[text]
+devstral-latest          cw=131072  mo=0      im=[text]
+mistral-large-latest     cw=131072  mo=8191   im=[text]
+magistral-medium-latest  cw=128000  mo=8192   im=[text]
+space-bunny-free         cw=128000  mo=0      im=[text]
+mistral-medium-3.5       cw=262144  mo=209715 im=[text,image]
+```
+
+The `deepseek-v4-pro`, `zai-glm-5-3`, `zai-glm-5-2` rows already matched
+INVENTORY.md before this run (the runbook's change-set table lists them as
+no-ops).
+
+## Deviations from the runbook (recorded deliberately)
+
+1. **`mistral-medium-3.5` `input_modalities` was NOT changed to `["text"]`**
+   even though INVENTORY.md lists it as text-only, and even though the runbook's
+   last change-set row says "every text-only model ... `["text"]`". Rationale:
+   `mistral-medium-3.5` is the **global visual vision model** (extension `visual`
+   config: `provider=mistral`, `model=mistral-medium-3.5`). Marking it text-only
+   would make the M1 capability gate strip images for direct requests to it and
+   would contradict `mistral-large-latest`'s own description ("Text only; use
+   mistral-medium-3.5 for images"). Kept `["text","image"]`; the INVENTORY.md
+   cell should be corrected (its own vision role), not the graph.
+2. **Extra model patches beyond the runbook table** were applied so every
+   INVENTORY.md row matches: `mistral-large-latest.max_output_tokens=8191`,
+   `devstral-latest.max_output_tokens` unset, `magistral-medium-latest.
+   max_output_tokens=8192`, `space-bunny-free.max_output_tokens` unset, plus the
+   `devstral-latest`/`mistral-large-latest` route `context_window` mirrors. The
+   table omitted those `max_output_tokens` fields.
+3. **Runbook corrections found while executing:** (a) the step-3(a) create body
+   example omits `baseRevision`, which the API requires (`rejectCreateConflict`);
+   (b) the create must copy **all** of the old model's metadata (reasoning
+   levels, `deepseek_v4`/`web_search` extensions), not just context window /
+   max output / modalities, or reasoning support is lost; (c) step 4 must be
+   re-run after step 5 for the rename to reach the catalog; (d) a dangling
+   offer/route reference on delete surfaces as a validation rejection (HTTP
+   400), not necessarily 409.
+4. **Out-of-scope observation:** `GET /config/export?include_secrets=false`
+   still returns `server.auth_token` in cleartext (`ExportYAML` does not mask
+   it; only the graph masks it). Flagged for a later milestone.
+
+## S-M2-7 execution (same session)
+
+### Step 5 — mirror `config.yml`
+
+```
+headerless  GET /config/export?include_secrets=true          -> 400
+with header GET /config/export?include_secrets=true
+            (X-Confirm-Secrets: true) -> /opt/docker/provider-bridge/config.yml
+-rw-r--r-- 1 root root 12477 Oct  6 22:10 config.yml   (mode 644)
+drwxr-x--- 2 65532 65532 data                          (owner/mode preserved)
+valid YAML: 10 models / 11 routes / 3 providers
+deepseek models: [deepseek-flash, deepseek-v4-pro]
+deepseek offers: [deepseek-v4-pro, deepseek-flash]
+```
+
+### Step 6.1 — Claude Code setting
+
+`~/.claude/settings.json` already had
+`"CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1000000"` (and `"model": "opus"`).
+**Value kept at 1000000** (the plan's decision); no other setting touched.
+
+### Step 6.2 — Mac Codex artifacts
+
+Ran `codex_regen.sh` on mini **after** the mirror, then installed the
+regenerated `models_catalog.json` to `~/.codex/models_catalog.json`
+(276017 bytes, 12 models, `deepseek-flash` present with cw 1000000,
+`deepseek-v4-flash` gone). `~/.codex/config.toml` was **backed up but not
+overwritten** — it is hand-maintained (personality, `[projects.*]`,
+`[mcp_servers.deepwiki]`) and the mini-generated file would destroy those
+sections; Codex reads `models_catalog.json` via the existing
+`model_catalog_json` pointer, which is what makes `deepseek-flash` visible.
+Backups: `~/.codex/models_catalog.json.bak-m2-<ts>`,
+`~/.codex/config.toml.bak-m2-<ts>`. App-server (`codex app-server`, PIDs
+41141/59824/86139) restarted with `pkill -f 'codex.*app-server'`; it does not
+auto-respawn and starts on the next Codex invocation.
+
+### Step 7 — live verification
+
+```
+POST /v1/responses (model=deepseek-pro, stream, function tool get_time + reasoning high)
+  http=200; response.created/in_progress/completed present; reasoning_events=...;
+  function_call present; response.completed present
+GET /v1/models -> {"object":"list","data":[...]} data[]=10 slug ids, no duplicate ids;
+  deepseek/deepseek-flash present; deepseek-v4-flash absent
+claude -p "Reply with exactly: OK" --model sonnet -> OK
+claude -p "Reply with exactly: OK" --model haiku  -> OK
+  (both print [claude-code:unrecognized_model] for the mapped model name, request still succeeds)
+Mirror check: config.yml == /config/export?include_secrets=false (secrets normalized) -> CONSISTENT
+```
+
+Container `StartedAt` still `2026-10-06T15:00:25.130245275Z` after all operations
+(no restart). The full AGENTS.md §4.1 matrix remains deferred to the final
+program deploy (M1 image not yet `up -d`).
