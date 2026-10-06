@@ -171,6 +171,60 @@ func TestSQLiteStoreExportYAML(t *testing.T) {
 	}
 }
 
+// TestSQLiteStoreExportYAMLMasksShortAuthToken is a regression guard for an
+// 8-character server.auth_token. The masker must fully redact it rather than
+// emitting first-4 + last-4, which for an exactly-8-char token discloses every
+// character. The sanitized export must not contain the token, the buggy
+// reconstruction "Zx9Q****p7Wm", or its 4-char prefix/suffix components.
+func TestSQLiteStoreExportYAMLMasksShortAuthToken(t *testing.T) {
+	logger := testLogger(t)
+	c := store.NewConfigStoreConsumer(logger)
+
+	ts := newTestStore(t, "config_store", c.Tables())
+	if err := c.BindStore(ts); err != nil {
+		t.Fatalf("BindStore() error = %v", err)
+	}
+	cs := c.Store()
+	if cs == nil {
+		t.Fatal("Store() returned nil")
+	}
+
+	const shortToken = "Zx9Qp7Wm" // exactly 8 characters
+	cfg := buildTestConfig()
+	cfg.AuthToken = shortToken
+	if err := cs.SeedFromConfig(cfg); err != nil {
+		t.Fatalf("SeedFromConfig() error = %v", err)
+	}
+
+	// include_secrets=true must still round-trip the real token.
+	withSecrets, err := cs.ExportYAML(true)
+	if err != nil {
+		t.Fatalf("ExportYAML(true) error = %v", err)
+	}
+	if !contains(string(withSecrets), shortToken) {
+		t.Fatal("ExportYAML(true) omitted short server.auth_token")
+	}
+
+	// include_secrets=false must fully redact it.
+	masked, err := cs.ExportYAML(false)
+	if err != nil {
+		t.Fatalf("ExportYAML(false) error = %v", err)
+	}
+	maskedStr := string(masked)
+	if contains(maskedStr, shortToken) {
+		t.Fatalf("ExportYAML(false) leaked short server.auth_token %q", shortToken)
+	}
+	if contains(maskedStr, "Zx9Q****p7Wm") {
+		t.Fatal("ExportYAML(false) leaked short server.auth_token via first-4/last-4 reconstruction")
+	}
+	if contains(maskedStr, "Zx9Q") {
+		t.Fatal("ExportYAML(false) leaked short server.auth_token prefix")
+	}
+	if contains(maskedStr, "p7Wm") {
+		t.Fatal("ExportYAML(false) leaked short server.auth_token suffix")
+	}
+}
+
 func TestSQLiteStoreStageAndDiscardChanges(t *testing.T) {
 	logger := testLogger(t)
 	c := store.NewConfigStoreConsumer(logger)

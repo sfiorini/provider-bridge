@@ -495,6 +495,8 @@ func (s *Server) handleWithAdapters(
 				"provider", preferred.ProviderKey, "model", preferred.UpstreamModel)
 			strippedReq, _ := visualpkg.StripImagesFromChat(*chatReq)
 			chatReq = &strippedReq
+			// Trace what is actually sent upstream (pre-strip capture above).
+			record.ChatRequest = chatReq
 		}
 
 		var chatResp *chat.ChatResponse
@@ -1119,6 +1121,9 @@ func (s *Server) handleAdapterStream(
 				"provider", candidate.ProviderKey, "model", candidate.UpstreamModel)
 			strippedReq, _ := visualpkg.StripImagesFromAnthropic(*anthReq)
 			anthReq = &strippedReq
+			// Trace what is actually sent upstream (pre-strip capture above).
+			streamRecord.AnthropicRequest = anthReq
+			streamRecord.UpstreamRequest = anthReq
 		}
 		if visCoreProvider != nil {
 			coreResp, err := visCoreProvider.CreateCore(ctx, coreReq)
@@ -1325,6 +1330,8 @@ func (s *Server) handleAdapterStream(
 				"provider", candidate.ProviderKey, "model", candidate.UpstreamModel)
 			strippedReq, _ := visualpkg.StripImagesFromChat(*chatReq)
 			chatReq = &strippedReq
+			// Trace what is actually sent upstream (pre-strip capture above).
+			streamRecord.ChatRequest = chatReq
 		}
 
 		if wsInjected {

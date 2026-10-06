@@ -10,11 +10,14 @@ Old model format (per-provider):
     providers:
       deepseek:
         models:
-          providerbridge:            # alias as key
+          legacy-alias:          # alias as key (the pre-rename default alias)
             name: deepseek-v4-pro  # upstream model name
             context_window: 1000000
             pricing:
               input_price: 2
+
+Note: the alias key is arbitrary — any legacy alias (including the pre-rename
+default) still resolves, so only the key name, not its value, changes here.
 
 New format:
   provider:
