@@ -132,12 +132,14 @@ extensions:
 # =============================================================================
 # Models
 # =============================================================================
-# Model metadata (context_window, display_name, reasoning_levels, modalities,
-# pricing, etc.) is stored in metadata/models/<slug>.json. The models section
-# below only contains runtime behaviour overrides: extension toggles and
-# web_search configuration at the model level.
+# Model metadata (context_window, max_output_tokens, display_name, reasoning_levels,
+# modalities, pricing, etc.) is declared per model below. The deployed model
+# inventory (with per-model verification status) lives in INVENTORY.md at the repo root.
 models:
   deepseek-v4-pro:
+    context_window: 1000000
+    max_output_tokens: 384000
+    input_modalities: ["text"]
     web_search:
       support: "auto"
     extensions:
@@ -147,6 +149,9 @@ models:
         enabled: true
 
   deepseek-v4-flash:
+    context_window: 1000000
+    max_output_tokens: 384000
+    input_modalities: ["text"]
     web_search:
       support: "auto"
     extensions:
@@ -156,6 +161,9 @@ models:
         enabled: true
 
   claude-sonnet-4-20250514:
+    context_window: 200000
+    max_output_tokens: 128000
+    input_modalities: ["text", "image"]
     extensions: {}   # no overrides, metadata only
 
   # kimi-for-coding:
@@ -168,7 +176,11 @@ models:
   # Used by Codex CLI for automatic review of privilege-elevation
   # (sandbox escalation) requests. Typically maps to a frontier model.
   codex-auto-review:
+    input_modalities: ["text"]
     extensions: {}
+
+  kimi-for-coding:
+    input_modalities: ["text"]
 
 # =============================================================================
 # Providers
