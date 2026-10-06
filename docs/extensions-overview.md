@@ -387,7 +387,7 @@ extensions:
   db_sqlite:
     enabled: true
     config:
-      path: ./data/providerbridge.db
+      path: ./data/provider-bridge.db
       wal: true
       busy_timeout_ms: 5000
       max_open_conns: 1

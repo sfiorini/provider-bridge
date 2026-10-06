@@ -36,7 +36,7 @@ go run ./cmd/providerbridge
 
 ## 2. 配置
 
-未传 `-config` 且 `$HOME/providerbridge/config.yml` 不存在时，Provider Bridge 会自动创建 starter 配置，启用 SQLite，并把数据库放在 `$HOME/providerbridge/data/providerbridge.db`。启动后打开 Web Console：
+未传 `-config` 且 `$HOME/provider-bridge/config.yml` 不存在时，Provider Bridge 会自动创建 starter 配置，启用 SQLite，并把数据库放在 `$HOME/provider-bridge/data/provider-bridge.db`。启动后打开 Web Console：
 
 ```text
 http://127.0.0.1:38440/console/

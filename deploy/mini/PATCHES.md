@@ -59,7 +59,7 @@ at `~/.config/opencode-zen.key`.
 
 ## Architecture notes
 
-- Live config = SQLite config graph (`data/providerbridge.db`, tables
+- Live config = SQLite config graph (`data/provider-bridge.db`, tables
   `config_store_*`); `config.yml` is the seed/mirror. Edit the live
   config through the management API (`/api/v1/config/graph`), then sync
   `config.yml` to match (codex_regen.sh reads it).

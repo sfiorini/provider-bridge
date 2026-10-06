@@ -3,24 +3,6 @@
 Provider Bridge 是一个用 Go 编写的协议转换与模型路由代理。对外暴露 **OpenAI Responses API**（`/v1/responses`），对内支持 **Anthropic Messages**、**Google Gemini（GenAI）**、**OpenAI Chat Completions** 等多种上游协议。客户端指定不同模型别名时，自动将请求路由到对应上游 Provider 并在协议间自动转换。
 
 > 🍳 **新手先看这里** → [CookBook.md](CookBook.md)：一份按目标找做法的菜谱，5 分钟跑通第一个对话。
-> 官方qq群：1103798316
-
-## 特别感谢 🙏
-
-<table align="center">
-  
-
-  <tr>
-    <td align="center" width="160">
-      <a href=" "><img src="./Images/volcano.png" alt="火山引擎" height="32"></a ><br>
-      <a href="https://dis.chatdesks.cn/chatdesk/hsyqprovider-bridge.html"><strong>方舟 Agent Plan</strong></a >
-    </td>
-    <td align="left">
-      <sub>感谢 <a href="https://dis.chatdesks.cn/chatdesk/hsyqprovider-bridge.html">方舟 Agent Plan </a>模型订阅套餐集成了包含 Doubao-Seed、Doubao-Seedance、Doubao-Seedream 等在内的字节跳动自研 SOTA 级模型，覆盖文本、代码、图像、视频等多模态任务。最新支持 MiniMax-M3、DeepSeek-V4 系列、GLM-5.2、Doubao-Seed-2.0 系列、Kimi-K2.6 等模型，工具不限。超全模态模型与 Harness 升级一步到位，深度支持 Agent 框架与 AI 编程工具。一次订阅，可以为不同任务切换合适的 AI 引擎。 </sub>
-    </td>
-  </tr>
-  
-</table>
 
 ---
 
@@ -30,7 +12,7 @@ Provider Bridge 是一个用 Go 编写的协议转换与模型路由代理。对
 # pacman 或二进制安装后直接启动
 providerbridge
 
-# 首次无配置启动会创建 $HOME/providerbridge/config.yml
+# 首次无配置启动会创建 $HOME/provider-bridge/config.yml
 # 打开 http://127.0.0.1:38440/console/
 # 在 Web Console 中配置 Provider、Model 和 API Key
 
@@ -94,7 +76,7 @@ docker run -p 38440:38440 -v $(pwd)/config.yml:/config/config.yml providerbridge
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `-config` | `$HOME/providerbridge/config.yml` | 配置文件路径 |
+| `-config` | `$HOME/provider-bridge/config.yml` | 配置文件路径 |
 | `-addr` | 来自配置文件 | 覆盖监听地址 |
 | `-mode` | 来自配置文件 | 覆盖运行模式（Transform/CaptureAnthropic/CaptureResponse） |
 | `-print-addr` | — | 打印配置的监听地址后退出 |

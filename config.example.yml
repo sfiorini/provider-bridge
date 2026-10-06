@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./config.schema.json
 # =============================================================================
-# ProviderBridge Configuration Example
+# Provider Bridge Configuration Example
 # =============================================================================
 # This file documents every configurable field and serves as a live reference.
 # Uncomment and adjust values for your own deployment.

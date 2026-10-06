@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["httpx", "rich"]
 # ///
-"""Analyze ProviderBridge metrics grouped by Provider.
+"""Analyze Provider Bridge metrics grouped by Provider.
 
 Fetches per-request records from GET /v1/admin/metrics, aggregates per-provider
 stats, and renders three focused tables: Usage, Cache Analysis, SLA.
@@ -12,7 +12,7 @@ Usage:
   BASE_URL=http://127.0.0.1:38440 API_KEY=sk-... uv run scripts/dev/metrics_analyze.py
 
 Environment variables:
-  BASE_URL   ProviderBridge server base URL (required)
+  BASE_URL   Provider Bridge server base URL (required)
   API_KEY    Bearer token for authentication (optional if auth is disabled)
   LIMIT      Max records per page (default: 1000)
   PROVIDER   Filter by provider key (optional)

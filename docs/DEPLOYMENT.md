@@ -26,7 +26,7 @@ Description=Provider Bridge
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/providerbridge -config /etc/providerbridge/config.yml
+ExecStart=/usr/local/bin/providerbridge -config /etc/provider-bridge/config.yml
 Restart=always
 RestartSec=5
 User=providerbridge

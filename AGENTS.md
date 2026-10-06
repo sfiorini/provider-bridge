@@ -224,7 +224,7 @@ pick the right HTTP client for the provider.
 - **DeepSeek reasoning replay**: reasoning is cached per session
   (`cacheReasoningForChat`) and prepended to follow-up requests
   (`prependCachedReasoningForChat`/`prependCachedThinking`).
-- **Config graph**: SQLite (`data/providerbridge.db`, `config_store_*` tables) is
+- **Config graph**: SQLite (`data/provider-bridge.db`, `config_store_*` tables) is
   the live source of truth, managed via `/api/v1/config/graph`
   (`internal/service/configgraph`); `config.yml` is the seed and mirror
   (and the input for codex catalog generation). Secrets are masked (`***`)
@@ -267,8 +267,8 @@ Gotchas that bite (each caused a real incident):
   diagnostics).
 - Passing `-config /config/config.yml` is required (the compose command does
   it; a bare `docker run` without it silently creates a default config at
-  `$HOME/providerbridge/config.yml`).
-- Copying `providerbridge.db` without its `-wal`/`-shm` siblings loses recent
+  `$HOME/provider-bridge/config.yml`).
+- Copying `provider-bridge.db` without its `-wal`/`-shm` siblings loses recent
   transactions when the source is running; stop the source container first
   (a clean close checkpoints the WAL — then only the main db is needed).
 

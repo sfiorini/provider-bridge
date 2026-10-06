@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["ruamel.yaml"]
 # ///
-"""Migrate ProviderBridge config.yml to the current provider/routes format.
+"""Migrate Provider Bridge config.yml to the current provider/routes format.
 
 Old model format (per-provider):
   provider:
@@ -634,7 +634,7 @@ def provider_looks_like_deepseek(provider_key: str, pdef: dict) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Migrate ProviderBridge config to new routes format.")
+    parser = argparse.ArgumentParser(description="Migrate Provider Bridge config to new routes format.")
     parser.add_argument("input", nargs="?", default="config.yml", help="Input config file (default: config.yml)")
     parser.add_argument("output", nargs="?", default=None, help="Output file (default: overwrite input)")
     parser.add_argument("--dry-run", action="store_true", help="Print result to stdout without writing")

@@ -2,7 +2,7 @@
 
 > 完整示例见 [`config.example.yml`](config.example.yml)，JSON Schema 见 [`config.schema.json`](config.schema.json)
 
-Provider Bridge 使用 YAML 配置文件。未传 `-config` 时默认读取 `$HOME/providerbridge/config.yml`；如果该文件不存在，会自动创建 starter 配置后继续启动。starter 配置启用 SQLite，数据库路径为 `$HOME/providerbridge/data/providerbridge.db`。
+Provider Bridge 使用 YAML 配置文件。未传 `-config` 时默认读取 `$HOME/provider-bridge/config.yml`；如果该文件不存在，会自动创建 starter 配置后继续启动。starter 配置启用 SQLite，数据库路径为 `$HOME/provider-bridge/data/provider-bridge.db`。
 
 通过 `-config <path>` 可指定任意路径；显式 `-config` 指向的文件不存在时不会自动创建，程序会 fail fast。
 
@@ -55,7 +55,7 @@ extensions:
   db_sqlite:
     enabled: true
     config:
-      path: ~/.provider-bridge/providerbridge.db
+      path: ~/.provider-bridge/provider-bridge.db
       wal: true
       busy_timeout_ms: 5000
       max_open_conns: 1
@@ -210,7 +210,7 @@ extensions:
   db_sqlite:
     enabled: true
     config:
-      path: ./data/providerbridge.db
+      path: ./data/provider-bridge.db
       wal: true
       busy_timeout_ms: 5000
       max_open_conns: 1
@@ -240,7 +240,7 @@ proxy:
 
 | 标志 | 默认值 | 说明 |
 |------|--------|------|
-| `-config` | `$HOME/providerbridge/config.yml` | 配置文件路径 |
+| `-config` | `$HOME/provider-bridge/config.yml` | 配置文件路径 |
 | `-addr` | 来自配置文件 | 覆盖监听地址 |
 | `-mode` | 来自配置文件 | 覆盖运行模式（Transform/CaptureAnthropic/CaptureResponse） |
 | `-print-addr` | — | 打印配置的监听地址后退出 |

@@ -1,4 +1,4 @@
 interface:
-  display_name: "Providerbridge Webui Design"
+  display_name: "Provider Bridge Webui Design"
   short_description: "Apply Provider Bridge webui Material design rules."
   default_prompt: "Use $provider-bridge-webui-design before changing Provider Bridge webui UI components."

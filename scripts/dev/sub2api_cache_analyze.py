@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["httpx", "rich"]
 # ///
-"""Analyze sub2api / ProviderBridge cache usage with a terminal-adaptive table.
+"""Analyze sub2api / Provider Bridge cache usage with a terminal-adaptive table.
 
 Usage:
   BASE_URL=http://... API_KEY=sk-... python3 scripts/sub2api_cache_analyze.py
