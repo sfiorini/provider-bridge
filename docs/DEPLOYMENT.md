@@ -54,7 +54,7 @@ server {
 ### Dockerfile（多阶段构建）
 
 ```dockerfile
-FROM golang:1.26-bookworm AS builder
+FROM golang:1.27-bookworm AS builder
 
 ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src

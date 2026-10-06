@@ -299,12 +299,13 @@ Against the live bridge (token = `server.auth_token` in `config.yml`):
 
 The canonical dev clone is `~/Projects/provider-bridge/src` (Mac), remote
 `origin` = `github.com/sfiorini/provider-bridge` (private). No local Go/Docker
-on the Mac: build and test on mini inside `golang:1.26-bookworm`.
+on the Mac: build and test on mini inside `golang:1.27-bookworm`.
 
     # edit on the Mac, then:
     rsync -a --delete ~/Projects/provider-bridge/src/ mini:/tmp/pb-build/   # or to the deploy src
-    ssh mini 'sudo docker run --rm -v pb-gomod:/go/pkg/mod -v /tmp/pb-build:/app -w /app golang:1.26-bookworm go test ./...'
+    ssh mini 'sudo docker run --rm -v pb-gomod:/go/pkg/mod -v /tmp/pb-build:/app -w /app golang:1.27-bookworm go test ./...'
     # deploy: rsync to /opt/docker/provider-bridge/src (sudo), docker compose build && up -d
+    # Note: CI never builds the Dockerfile; the golang:1.27 builder image is first exercised by mini's docker compose build.
 
 **Commit before deploying** so GitHub, mini and the Mac stay in sync.
 Deployments follow `PATCHES.md`; the update procedure for upstream changes is
