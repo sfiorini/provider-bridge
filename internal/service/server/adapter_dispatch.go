@@ -235,6 +235,13 @@ func (s *Server) handleWithAdapters(
 			return
 		}
 
+		// Image-capability gate: only requests whose images the upstream
+		// cannot consume natively get visual assist (or the strip fallback).
+		hasImage := coreRequestHasImage(coreReq)
+		supportsImg := s.candidateSupportsImage(preferred)
+		needsAssist := hasImage && !supportsImg
+		visRan := false
+
 		// Inject native web_search tool when the resolved candidate supports it.
 		if wsMode == "enabled" {
 			injectAnthropicWebSearch(upstreamReq)
@@ -296,15 +303,27 @@ func (s *Server) handleWithAdapters(
 			}
 		}
 
-		// Wrap with visual orchestrator at Core level if enabled for this model.
-		// This uses CoreProvider, which is protocol-agnostic.
-		if visProv := s.wrapWithVisual(ctx, openAIReq.Model, preferred, providerAdapter, finalizeAnthropicUpstream); visProv != nil {
-			var coreRespApi *format.CoreResponse
-			coreRespApi, err = visProv.CreateCore(ctx, coreReq)
-			if err == nil {
-				coreResp = coreRespApi
+		// Wrap with visual orchestrator at Core level when the request needs
+		// visual assist; the unconditional fall-through below serves both
+		// text-only requests and assist requests whose orchestrator is
+		// unavailable (visRan stays false).
+		if needsAssist {
+			if visProv := s.wrapWithVisual(ctx, openAIReq.Model, preferred, providerAdapter, finalizeAnthropicUpstream); visProv != nil {
+				visRan = true
+				var coreRespApi *format.CoreResponse
+				coreRespApi, err = visProv.CreateCore(ctx, coreReq)
+				if err == nil {
+					coreResp = coreRespApi
+				}
 			}
-		} else {
+		}
+		if !visRan {
+			if needsAssist {
+				log.Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+					"provider", preferred.ProviderKey, "model", preferred.UpstreamModel)
+				strippedReq, _ := visualpkg.StripImagesFromAnthropic(*upstreamReq)
+				upstreamReq = &strippedReq
+			}
 			var upstreamRespMsg anthropic.MessageResponse
 			var rawResp any
 			rawResp, err = effectiveProvider.CreateMessage(ctx, *upstreamReq)
@@ -401,6 +420,13 @@ func (s *Server) handleWithAdapters(
 
 		record.ChatRequest = chatReq
 
+		// Image-capability gate: only requests whose images the upstream
+		// cannot consume natively get visual assist (or the strip fallback).
+		hasImage := coreRequestHasImage(coreReq)
+		supportsImg := s.candidateSupportsImage(preferred)
+		needsAssist := hasImage && !supportsImg
+		visRan := false
+
 		// finalizeChatUpstream applies per-round mutations (cached reasoning
 		// replay) on every orchestrator round. prependCachedReasoningForChat
 		// is idempotent so duplicate application against the initial chatReq
@@ -422,43 +448,53 @@ func (s *Server) handleWithAdapters(
 		// the chat-protocol endpoint instead.
 		visualCandidate := preferred
 		visualCandidate.Client = &chatProviderClient{c: chatClient}
-		if visProv := s.wrapWithVisual(ctx, openAIReq.Model, visualCandidate, providerAdapter, finalizeChatUpstream); visProv != nil {
-			coreResp, err = visProv.CreateCore(ctx, coreReq)
-			if err != nil {
-				log.Error("adapter path: chat visual CreateCore failed", "error", err)
-				payload := openai.ErrorResponse{
-					Error: openai.ErrorObject{
-						Message: fmt.Sprintf("visual orchestration failed: %v", err),
-						Type:    "server_error",
-						Code:    "provider_error",
-					},
-				}
-				record.Error = traceError("chat_visual_core", err)
-				record.OpenAIResponse = payload
-				adapterHookErr = "chat_visual_core"
-				writeOpenAIError(w, http.StatusBadGateway, payload)
-				return
-			}
-			if wsInjected {
-				searchCfg := s.resolvedSearchConfig(preferred.ProviderKey, openAIReq.Model)
-				coreResp, err = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+		if needsAssist {
+			if visProv := s.wrapWithVisual(ctx, openAIReq.Model, visualCandidate, providerAdapter, finalizeChatUpstream); visProv != nil {
+				visRan = true
+				coreResp, err = visProv.CreateCore(ctx, coreReq)
 				if err != nil {
-					log.Error("adapter path: core search loop failed", "error", err)
+					log.Error("adapter path: chat visual CreateCore failed", "error", err)
 					payload := openai.ErrorResponse{
 						Error: openai.ErrorObject{
-							Message: fmt.Sprintf("visual search orchestration failed: %v", err),
+							Message: fmt.Sprintf("visual orchestration failed: %v", err),
 							Type:    "server_error",
 							Code:    "provider_error",
 						},
 					}
-					record.Error = traceError("chat_visual_search", err)
+					record.Error = traceError("chat_visual_core", err)
 					record.OpenAIResponse = payload
-					adapterHookErr = "chat_visual_search"
+					adapterHookErr = "chat_visual_core"
 					writeOpenAIError(w, http.StatusBadGateway, payload)
 					return
 				}
+				if wsInjected {
+					searchCfg := s.resolvedSearchConfig(preferred.ProviderKey, openAIReq.Model)
+					coreResp, err = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+					if err != nil {
+						log.Error("adapter path: core search loop failed", "error", err)
+						payload := openai.ErrorResponse{
+							Error: openai.ErrorObject{
+								Message: fmt.Sprintf("visual search orchestration failed: %v", err),
+								Type:    "server_error",
+								Code:    "provider_error",
+							},
+						}
+						record.Error = traceError("chat_visual_search", err)
+						record.OpenAIResponse = payload
+						adapterHookErr = "chat_visual_search"
+						writeOpenAIError(w, http.StatusBadGateway, payload)
+						return
+					}
+				}
+				break
 			}
-			break
+		}
+
+		if needsAssist && !visRan {
+			log.Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+				"provider", preferred.ProviderKey, "model", preferred.UpstreamModel)
+			strippedReq, _ := visualpkg.StripImagesFromChat(*chatReq)
+			chatReq = &strippedReq
 		}
 
 		var chatResp *chat.ChatResponse
@@ -951,7 +987,15 @@ func (s *Server) handleAdapterStream(
 		s.writeTrace(streamRecord)
 	}()
 
-	if candidate.Protocol == config.ProtocolAnthropic && coreRequestHasImage(coreReq) {
+	// Image-capability gate shared by the protocol cases below: only
+	// requests whose images the upstream cannot consume natively get visual
+	// assist (or the strip fallback). The OpenAIChat case below deliberately
+	// shadows these with its own case-clause declarations — do not hoist.
+	hasImage := coreRequestHasImage(coreReq)
+	supportsImg := s.candidateSupportsImage(candidate)
+	needsAssist := hasImage && !supportsImg
+
+	if candidate.Protocol == config.ProtocolAnthropic && needsAssist {
 		if providerAdapter := s.adapterRegistryProvider(config.ProtocolAnthropic); providerAdapter != nil {
 			finalizeAnthropicUpstream := func(_ context.Context, upstream any) (any, error) {
 				msgReq, err := normalizeAnthropicRequest(upstream)
@@ -1032,8 +1076,7 @@ func (s *Server) handleAdapterStream(
 		}
 
 		var visCoreProvider visualpkg.CoreProvider
-		hasImage := coreRequestHasImage(coreReq)
-		if hasImage {
+		if needsAssist {
 			if provAdapter, ok := s.adapterRegistry.GetProvider(candidate.Protocol); ok {
 				finalizeAnthropicUpstream := func(_ context.Context, upstream any) (any, error) {
 					msgReq, err := normalizeAnthropicRequest(upstream)
@@ -1071,16 +1114,11 @@ func (s *Server) handleAdapterStream(
 			writeOpenAIError(w, http.StatusInternalServerError, payload)
 			return
 		}
-		// Strip image blocks from anthropic request if visual extension is enabled
-		// and images are present. This prevents base64 image data from being sent to
-		// text-only models while keeping pure-text requests on the real streaming path.
-		if hasImage && s.pluginRegistry != nil && s.runtime != nil && openAIReq.Model != "" {
-			cfgV := s.runtime.Current().Config
-			visCfg, visOk := visualpkg.ConfigForModelFromResolvedConfig(cfgV, openAIReq.Model)
-			if visOk && visCfg.Provider != "" && visCfg.Model != "" {
-				strippedReq, _ := visualpkg.StripImagesFromAnthropic(*anthReq)
-				anthReq = &strippedReq
-			}
+		if needsAssist && visCoreProvider == nil {
+			log.Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+				"provider", candidate.ProviderKey, "model", candidate.UpstreamModel)
+			strippedReq, _ := visualpkg.StripImagesFromAnthropic(*anthReq)
+			anthReq = &strippedReq
 		}
 		if visCoreProvider != nil {
 			coreResp, err := visCoreProvider.CreateCore(ctx, coreReq)
@@ -1170,19 +1208,13 @@ func (s *Server) handleAdapterStream(
 			return
 		}
 
-		// Strip image blocks from chat request when the visual extension is
-		// enabled for this model. The visual orchestrator does not run on the
-		// streaming path; without stripping, raw base64 image data would be
-		// forwarded to a text-only upstream that cannot consume it and would
-		// burn input tokens. Mirrors the anthropic streaming behavior above.
-		if s.pluginRegistry != nil && s.runtime != nil && openAIReq.Model != "" {
-			cfgV := s.runtime.Current().Config
-			visCfg, visOk := visualpkg.ConfigForModelFromResolvedConfig(cfgV, openAIReq.Model)
-			if visOk && visCfg.Provider != "" && visCfg.Model != "" {
-				strippedReq, _ := visualpkg.StripImagesFromChat(*chatReq)
-				chatReq = &strippedReq
-			}
-		}
+		// Image-capability gate. These case-clause declarations deliberately
+		// shadow the function-scope hasImage/supportsImg/needsAssist above
+		// (each case is its own implicit block; values are identical).
+		hasImage := coreRequestHasImage(coreReq)
+		supportsImg := s.candidateSupportsImage(candidate)
+		needsAssist := hasImage && !supportsImg
+		visRan := false
 
 		// Prepend cached reasoning for DeepSeek thinking chain replay.
 		if s.pluginRegistry != nil && sess != nil {
@@ -1231,7 +1263,7 @@ func (s *Server) handleAdapterStream(
 
 		// Visual orchestrator for streaming path: non-streaming orchestration
 		// → synthetic stream events, matching the anthropic streaming pattern.
-		if s.pluginRegistry != nil && s.runtime != nil && openAIReq.Model != "" && ok && providerAdapter != nil {
+		if needsAssist && s.pluginRegistry != nil && s.runtime != nil && openAIReq.Model != "" && ok && providerAdapter != nil {
 			cfgV := s.runtime.Current().Config
 			visCfg, visOk := visualpkg.ConfigForModelFromResolvedConfig(cfgV, openAIReq.Model)
 			if visOk && visCfg.Provider != "" && visCfg.Model != "" {
@@ -1248,6 +1280,7 @@ func (s *Server) handleAdapterStream(
 				visCandidate := candidate
 				visCandidate.Client = &chatProviderClient{c: chatClient}
 				if visProv := s.wrapWithVisual(ctx, openAIReq.Model, visCandidate, providerAdapter, finalizeUpstream); visProv != nil {
+					visRan = true
 					coreResp, visErr := visProv.CreateCore(ctx, coreReq)
 					if visErr != nil {
 						log.Error("adapter stream: chat visual CreateCore failed", "error", visErr)
@@ -1285,6 +1318,13 @@ func (s *Server) handleAdapterStream(
 					break
 				}
 			}
+		}
+
+		if needsAssist && !visRan {
+			log.Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+				"provider", candidate.ProviderKey, "model", candidate.UpstreamModel)
+			strippedReq, _ := visualpkg.StripImagesFromChat(*chatReq)
+			chatReq = &strippedReq
 		}
 
 		if wsInjected {
