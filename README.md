@@ -2,7 +2,7 @@
 
 Provider Bridge 是一个用 Go 编写的协议转换与模型路由代理。对外暴露 **OpenAI Responses API**（`/v1/responses`），对内支持 **Anthropic Messages**、**Google Gemini（GenAI）**、**OpenAI Chat Completions** 等多种上游协议。客户端指定不同模型别名时，自动将请求路由到对应上游 Provider 并在协议间自动转换。
 
-> 🍳 **新手先看这里** → [CookBook.md](CookBook.md)：一份按目标找做法的菜谱，5 分钟跑通第一个对话。
+> 🍳 **新手先看这里** → [docs/COOKBOOK.md](docs/COOKBOOK.md)：一份按目标找做法的菜谱，5 分钟跑通第一个对话。
 
 ---
 
@@ -19,7 +19,7 @@ providerbridge
 # 源码开发也可以直接运行
 go run ./cmd/providerbridge
 
-# 另见 CookBook.md 中的详细使用场景
+# 另见 docs/COOKBOOK.md 中的详细使用场景
 ```
 
 源码开发要求 Go 1.25+。
@@ -97,7 +97,7 @@ docker run -p 38440:38440 -v $(pwd)/config.yml:/config/config.yml providerbridge
 | `/console/` | GET | 嵌入式 Web Console |
 | `/api/v1/` | — | 管理 API（需启用持久化） |
 
-详细 API 文档见 [API.md](docs/api.md)。
+详细 API 文档见 [API.md](docs/API.md)。
 
 ## 请求跟踪
 

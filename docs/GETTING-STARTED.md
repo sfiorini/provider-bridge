@@ -1,6 +1,6 @@
 # Getting Started
 
-> 5 分钟跑通第一个对话。更多用法见 [CookBook.md](CookBook.md)。
+> 5 分钟跑通第一个对话。更多用法见 [COOKBOOK.md](COOKBOOK.md)。
 
 ## 1. 安装
 
@@ -115,6 +115,6 @@ curl http://127.0.0.1:38440/v1/models
 
 ## 下一步
 
-- [CookBook.md](CookBook.md) — 常见用法场景
-- [architecture.md](architecture.md) — 系统架构详解
+- [COOKBOOK.md](COOKBOOK.md) — 常见用法场景
+- [ARCHITECTURE.md](ARCHITECTURE.md) — 系统架构详解
 - [CONFIGURATION.md](CONFIGURATION.md) — 完整配置指南

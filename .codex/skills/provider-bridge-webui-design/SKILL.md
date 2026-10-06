@@ -11,7 +11,7 @@ Prefer official Material Web components from `@material/web` for all common cont
 
 Do not hand-roll controls such as switches, buttons, icon buttons, checkboxes, radio buttons, menus, tabs, dialogs, sliders, text fields, or progress indicators unless the user explicitly approves a custom control for that specific case. If a custom control is approved, document why Material Web is insufficient and keep the custom surface isolated.
 
-Before changing webui UI, read `docs/webui/material-component-debt.md` when it exists. Treat it as the ordered migration backlog for known violations.
+Before changing webui UI, read `docs/webui/MATERIAL-COMPONENT-DEBT.md` when it exists. Treat it as the ordered migration backlog for known violations.
 
 Native `<button>`, `<input>`, `<select>`, and `<textarea>` elements are not acceptable for app controls under `webui/src` unless they are inside tests, non-interactive generated examples, or an explicitly approved exception. Route links may remain anchors when they are navigation, not button controls.
 
@@ -57,7 +57,7 @@ Visual verification is required for migrated controls. Use browser-rendered scre
 
 When acting as a reviewer agent for Provider Bridge webui changes, enforce this skill strictly:
 
-- Block approval if a common control is still hand-rolled and there is no explicit user-approved exception recorded in code or in `docs/webui/material-component-debt.md`.
+- Block approval if a common control is still hand-rolled and there is no explicit user-approved exception recorded in code or in `docs/webui/MATERIAL-COMPONENT-DEBT.md`.
 - Block approval if `webui/src` production code introduces native `<button>`, `<input>`, `<select>`, or `<textarea>` controls without an explicit approved exception.
 - Block approval if feature code directly creates `md-*` controls that should go through an existing Material wrapper, unless the direct element is a simple official grouping/decorative primitive such as `md-chip-set`, `md-icon`, or `md-ripple`.
 - Block approval if a Material Web replacement includes fallback markup that recreates the old custom control.

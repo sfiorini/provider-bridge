@@ -127,7 +127,7 @@ config, logger, modelref, session, db → （无内部依赖）
 1. 更新 `config.example.yml`
 2. 更新 `internal/config/config_loader.go` 的 `FileConfig` 和 `LoadFromFileWithOptions()`
 3. 更新相关脚本（`scripts/` 目录）
-4. 更新 README、`docs/config-migration.md` 和本文档
+4. 更新 README、`docs/CONFIG-MIGRATION.md` 和本文档
 
 Extension 专属配置不得再直接加到 core config struct。新增 extension 配置时应由 extension 实现 `plugin.ConfigSpecProvider`，在 spec 中声明 `extensions.<name>.enabled/config` 的 scope、默认值、typed config factory 和校验函数；core config 只保留通用 `extensions` 插槽和 `ExtensionEnabled` / `ExtensionConfig` resolver。
 
