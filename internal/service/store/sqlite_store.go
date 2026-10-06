@@ -1016,6 +1016,12 @@ func (s *SQLiteConfigStore) ExportYAML(includeSecrets bool) ([]byte, error) {
 
 // maskSecrets masks sensitive fields in a FileConfig.
 func maskSecrets(fc *config.FileConfig) {
+	// Mask the management-API bearer token so sanitized exports
+	// (include_secrets=false) used for backups/sharing never leak it.
+	if fc.Server.AuthToken != "" {
+		fc.Server.AuthToken = maskAPIKey(fc.Server.AuthToken)
+	}
+
 	// Mask provider-level secrets.
 	for key, def := range fc.Providers {
 		def.APIKey = maskAPIKey(def.APIKey)

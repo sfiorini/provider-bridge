@@ -148,7 +148,9 @@ models:
       visual:
         enabled: true
 
-  deepseek-v4-flash:
+  # `deepseek-v4-flash` is the retired upstream alias; live deployments serve it
+  # under `deepseek-flash` (see INVENTORY.md). This seed uses the current name.
+  deepseek-flash:
     context_window: 1000000
     max_output_tokens: 384000
     input_modalities: ["text"]
@@ -162,7 +164,7 @@ models:
 
   claude-sonnet-4-20250514:
     context_window: 200000
-    max_output_tokens: 128000
+    max_output_tokens: 64000
     input_modalities: ["text", "image"]
     extensions: {}   # no overrides, metadata only
 
@@ -201,7 +203,7 @@ providers:
           output_price: 8
           cache_write_price: 1
           cache_read_price: 0.2
-      - model: deepseek-v4-flash
+      - model: deepseek-flash
         pricing:
           input_price: 1
           output_price: 2

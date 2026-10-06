@@ -11,7 +11,7 @@ TOKEN="$(grep -m1 'auth_token:' /opt/docker/provider-bridge/config.yml | awk '{p
 BASE="http://localhost:38440"
 ```
 
-Related tracked files: [`codex_regen.sh`](./codex_regen.sh) (step 4),
+Related tracked files: [`codex_regen.sh`](./codex_regen.sh) (step 5),
 [`PATCHES.md`](./PATCHES.md), [`update.sh`](./update.sh).
 
 ---
@@ -65,7 +65,11 @@ Change set (from INVENTORY.md), each as one PATCH:
 | `devstral-latest` | `context_window` | `131072` |
 | `magistral-medium-latest` | `context_window` | `128000` |
 | `space-bunny-free` | `context_window` | `128000` |
-| every text-only model above | `input_modalities` | `["text"]` |
+| every text-only model above except `mistral-medium-3.5` | `input_modalities` | `["text"]` |
+
+`mistral-medium-3.5` is deliberately excluded: it is the global `visual` vision
+model, so its `input_modalities` stays `["text","image"]` (see INVENTORY.md and
+the Deviations section).
 
 Worked example:
 
@@ -79,27 +83,48 @@ Then re-read the revision (step 1) before the next PATCH.
 
 ## 3. Rename `deepseek-v4-flash` → `deepseek-flash`
 
-The upstream retired the old name (see INVENTORY.md). Sequence:
+The upstream retired the old name (see INVENTORY.md). The graph API requires a
+matching `baseRevision` on every create/patch, so re-read it first (step 1),
+then copy the **complete** existing metadata — not just context window / max
+output / modalities — so the model's reasoning levels and `deepseek_v4` /
+`web_search` extensions survive the rename.
 
-**(a)** Create the new model, copying the old model's metadata under the new slug:
+**(a)** Read the current revision, fetch the full `deepseek-v4-flash` value from
+the graph node, and create `deepseek-flash` with that complete value:
 
 ```bash
+REV=$(curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/config/graph" | jq -r .revision)
+VALUE=$(curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/config/graph" \
+  | jq -c '.resources[] | select(.kind=="model" and .id=="deepseek-v4-flash") | .value')
+
 curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  "$BASE/api/v1/config/resources/model" -d \
-  '{"id":"deepseek-flash","value":{"context_window":1000000,"max_output_tokens":384000,"input_modalities":["text"]}}'
+  "$BASE/api/v1/config/resources/model" \
+  -d "$(jq -nc --arg id deepseek-flash --argjson value "$VALUE" --arg rev "$REV" \
+        '{id:$id, value:$value, baseRevision:$rev}')"
 ```
+
+`baseRevision` is mandatory: `rejectCreateConflict`
+(`internal/service/api/config_graph.go`) returns a 409 revision conflict
+whenever the submitted `baseRevision` does not match the current graph
+revision, and an empty one never matches. Re-read `REV` before each call.
+The graph-node `value` is the same object shape the create endpoint expects, so
+resubmitting it verbatim under the new id is lossless (reasoning levels and
+custom extensions included). `GET /api/v1/models/deepseek-v4-flash` returns only
+slug/context/max-output/modalities — use the graph node, not that endpoint, to
+copy the full metadata.
 
 **(b)** Re-point the `deepseek` provider's offer model name `deepseek-v4-flash` →
 `deepseek-flash` (field path on the provider resource), then commit via the graph
-PATCH endpoint.
+PATCH endpoint using the current `baseRevision`.
 
 **(c)** Re-point any route whose `model` references `deepseek-v4-flash`.
 
 **(d)** Delete the old model:
 
 ```bash
+REV=$(curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/config/graph" | jq -r .revision)
 curl -s -X DELETE -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/config/resources/model/deepseek-v4-flash"
+  "$BASE/api/v1/config/resources/model/deepseek-v4-flash?baseRevision=$REV"
 ```
 
 **(e)** Verify the rename:
@@ -109,24 +134,16 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$BAS
 curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/models/deepseek-v4-flash"    # 404
 ```
 
-If step (d) returns 409, the offer re-point in (b) did not commit — re-check the
-graph with `GET $BASE/api/v1/config/graph` before retrying.
+If step (d) is rejected with **HTTP 400**, the offer re-point in (b) did not
+commit: a dangling offer/route reference fails graph **validation** (400), not a
+409. Re-check the graph with `GET $BASE/api/v1/config/graph` and confirm no
+provider offer or route still references `deepseek-v4-flash` before retrying.
 
-## 4. Regenerate the Codex catalog
-
-The graph reload does **not** regenerate the Codex catalog — this is a separate
-step:
-
-```bash
-cd /opt/docker/provider-bridge && sudo ./codex_regen.sh
-```
-
-Then restart Codex on the machine that consumed the old catalog.
-
-## 5. Mirror `config.yml`
+## 4. Mirror `config.yml`
 
 Export the live graph back over the seed/mirror file (secrets included), keeping
-mode `0644` (the container reads it as nonroot `65532`):
+mode `0644` (the container reads it as nonroot `65532`). This must happen
+**before** step 5: `codex_regen.sh` reads `config.yml`, not the live graph.
 
 ```bash
 curl -s -H "Authorization: Bearer $TOKEN" \
@@ -135,6 +152,19 @@ curl -s -H "Authorization: Bearer $TOKEN" \
   > /opt/docker/provider-bridge/config.yml
 sudo chmod 644 /opt/docker/provider-bridge/config.yml
 ```
+
+## 5. Regenerate the Codex catalog
+
+The graph reload does **not** regenerate the Codex catalog — this is a separate
+step, and it must run **after** step 4's mirror. `codex_regen.sh` reads
+`config.yml` (not the graph), so regenerating before the mirror leaves the old
+`deepseek-v4-flash` entry in the catalog and the rename never reaches it.
+
+```bash
+cd /opt/docker/provider-bridge && sudo ./codex_regen.sh
+```
+
+Then restart Codex on the machine that consumed the old catalog.
 
 ## 6. Mac side
 
@@ -173,7 +203,7 @@ done
 
 Every PATCH is hot-reloadable and reversible by patching the field back to its
 previous value. The `config.yml.bak-<date>` copy from step 0 is the pre-change
-snapshot; restore it and regenerate the catalog (step 4) to revert the mirror.
+snapshot; restore it and regenerate the catalog (step 5) to revert the mirror.
 The `deepseek-flash` rename is reversed by recreating the old slug and deleting
 the new one in the opposite order.
 
@@ -217,14 +247,19 @@ model  mistral-large-latest    max_output_tokens 8191    => committed 1791324610
 model  devstral-latest         context_window    131072  => committed 1791324610902298686
 model  devstral-latest         max_output_tokens 0       => committed 1791324611019093107
 model  magistral-medium-latest max_output_tokens 8192    => committed 1791324611140975113
+model  magistral-medium-latest context_window    128000  => no-op (already 128000)
 model  space-bunny-free        max_output_tokens 0       => committed 1791324611254853224
+model  space-bunny-free        context_window    128000  => no-op (already 128000)
 route  devstral-latest         context_window    131072  => committed 1791324611367027819
 route  mistral-large-latest    context_window    131072  => committed 1791324611477773636
 ```
 
 Value `0` on `max_output_tokens` is the "leave unset" encoding: the field is
 `omitempty`, so it is omitted from the graph/export (devstral-latest,
-space-bunny-free are undocumented per INVENTORY.md).
+space-bunny-free are undocumented per INVENTORY.md). The `context_window=128000`
+rows for `magistral-medium-latest` and `space-bunny-free` were already at the
+table value in the live graph, so they are recorded as no-ops above (no
+committed revision); every other change-set row has a matching commit id.
 
 ## Step 3 — rename `deepseek-v4-flash` -> `deepseek-flash`
 
@@ -294,31 +329,37 @@ no-ops).
 ## Deviations from the runbook (recorded deliberately)
 
 1. **`mistral-medium-3.5` `input_modalities` was NOT changed to `["text"]`**
-   even though INVENTORY.md lists it as text-only, and even though the runbook's
-   last change-set row says "every text-only model ... `["text"]`". Rationale:
-   `mistral-medium-3.5` is the **global visual vision model** (extension `visual`
-   config: `provider=mistral`, `model=mistral-medium-3.5`). Marking it text-only
-   would make the M1 capability gate strip images for direct requests to it and
-   would contradict `mistral-large-latest`'s own description ("Text only; use
-   mistral-medium-3.5 for images"). Kept `["text","image"]`; the INVENTORY.md
-   cell should be corrected (its own vision role), not the graph.
-2. **Extra model patches beyond the runbook table** were applied so every
-   INVENTORY.md row matches: `mistral-large-latest.max_output_tokens=8191`,
+   even though the runbook's original change-set row said "every text-only model
+   ... `["text"]`". Rationale: `mistral-medium-3.5` is the **global visual
+   vision model** (extension `visual` config: `provider=mistral`,
+   `model=mistral-medium-3.5`). Marking it text-only would make the M1
+   capability gate strip images for direct requests to it and would contradict
+   `mistral-large-latest`'s own description ("Text only; use
+   mistral-medium-3.5 for images"). Kept `["text","image"]` in the graph; the
+   INVENTORY.md row was corrected to `text, image` (its own vision role) rather
+   than the graph.
+2. **Extra model patches beyond the runbook change-set table** were applied so
+   every INVENTORY.md row matches: `mistral-large-latest.max_output_tokens=8191`,
    `devstral-latest.max_output_tokens` unset, `magistral-medium-latest.
    max_output_tokens=8192`, `space-bunny-free.max_output_tokens` unset, plus the
-   `devstral-latest`/`mistral-large-latest` route `context_window` mirrors. The
+   `devstral-latest`/`mistral-large-latest` route `context_window` mirrors (and
+   the `context_window=128000` rows already held those values — no-ops). The
    table omitted those `max_output_tokens` fields.
-3. **Runbook corrections found while executing:** (a) the step-3(a) create body
-   example omits `baseRevision`, which the API requires (`rejectCreateConflict`);
-   (b) the create must copy **all** of the old model's metadata (reasoning
-   levels, `deepseek_v4`/`web_search` extensions), not just context window /
-   max output / modalities, or reasoning support is lost; (c) step 4 must be
-   re-run after step 5 for the rename to reach the catalog; (d) a dangling
-   offer/route reference on delete surfaces as a validation rejection (HTTP
-   400), not necessarily 409.
-4. **Out-of-scope observation:** `GET /config/export?include_secrets=false`
-   still returns `server.auth_token` in cleartext (`ExportYAML` does not mask
-   it; only the graph masks it). Flagged for a later milestone.
+3. **Runbook corrections (now folded into steps 3–5 above, so the numbered
+   procedure no longer needs the workarounds):** (a) the step-3(a) create body
+   must carry a matching `baseRevision`, which the API requires
+   (`rejectCreateConflict` returns 409 otherwise); (b) the create must copy
+   **all** of the old model's metadata (reasoning levels,
+   `deepseek_v4`/`web_search` extensions), not just context window / max output /
+   modalities, or reasoning support is lost; (c) the catalog regeneration must
+   run **after** the `config.yml` mirror because `codex_regen.sh` reads
+   `config.yml`, not the graph — step 4 is now the mirror and step 5 the catalog
+   regeneration; (d) a dangling offer/route reference on delete surfaces as a
+   validation rejection (HTTP 400), not a 409.
+4. **Out-of-scope observation, now fixed:** `GET /config/export?include_secrets=false`
+   used to return `server.auth_token` in cleartext (`ExportYAML` did not mask
+   it; only the graph masked it). `maskSecrets` now masks `Server.AuthToken` too
+   (M2 review commit, with a regression test).
 
 ## S-M2-7 execution (same session)
 

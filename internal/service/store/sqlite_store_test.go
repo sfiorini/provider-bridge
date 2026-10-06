@@ -160,6 +160,15 @@ func TestSQLiteStoreExportYAML(t *testing.T) {
 	if contains(exportStr, "sk-ant-test-key-xxx") {
 		t.Fatal("ExportYAML(false) leaked API key")
 	}
+
+	// The management-API bearer token (server.auth_token) must also be masked
+	// in sanitized exports, and still present when secrets are included.
+	if !contains(string(data), "test-token") {
+		t.Fatal("ExportYAML(true) omitted server.auth_token")
+	}
+	if contains(exportStr, "test-token") {
+		t.Fatal("ExportYAML(false) leaked server.auth_token")
+	}
 }
 
 func TestSQLiteStoreStageAndDiscardChanges(t *testing.T) {

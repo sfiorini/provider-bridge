@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# regen.sh - regenerate Codex config.toml + models_catalog.json from moonbridge.
-# Run as root:  sudo /opt/docker/provider-bridge/regen.sh
+# codex_regen.sh - regenerate Codex config.toml + models_catalog.json from moonbridge.
+# Run as root:  sudo /opt/docker/provider-bridge/codex_regen.sh
 set -euo pipefail
 
 ROOT="/opt/docker/provider-bridge"
