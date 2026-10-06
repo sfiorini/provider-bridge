@@ -75,3 +75,6 @@ logs/
 *.log
 .omx/
 omx_wiki/
+
+# sf-flow-plan artifacts
+ai_plan/
