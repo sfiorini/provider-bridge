@@ -25,7 +25,7 @@ func (fn probeWebSearchCandidateFunc) ProbeWebSearchCandidate(ctx context.Contex
 }
 
 func TestWelcomeMessage(t *testing.T) {
-	want := "欢迎使用 Provider Bridge!"
+	want := "Welcome to Provider Bridge!"
 
 	if got := WelcomeMessage(); got != want {
 		t.Fatalf("WelcomeMessage() = %q, want %q", got, want)
@@ -37,7 +37,7 @@ func TestRunWritesWelcomeMessage(t *testing.T) {
 
 	Run(&output)
 
-	want := "欢迎使用 Provider Bridge!\n"
+	want := "Welcome to Provider Bridge!\n"
 	if got := output.String(); got != want {
 		t.Fatalf("Run() wrote %q, want %q", got, want)
 	}
@@ -80,7 +80,7 @@ func TestRunServerSeedsEmptyConfigStoreBeforeServingConfigGraph(t *testing.T) {
 		t.Fatal("config graph revision is empty after first-run seed")
 	}
 	for _, want := range []string{
-		"Provider Bridge 监听于 " + addr,
+		"Provider Bridge listening on " + addr,
 		"Web Console: http://" + addr + "/console/",
 	} {
 		if !strings.Contains(output.String(), want) {

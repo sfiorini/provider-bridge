@@ -44,8 +44,8 @@ func main() {
 	}
 
 	if cfg.AuthToken == "" && !isDevEnv() {
-		slog.Error("Worker 生产环境必须配置认证：请在 server.auth_token 中设置 Bearer token，" +
-			"或通过 wrangler secret put PROVIDER_BRIDGE_CONFIG 注入包含 auth_token 的配置")
+		slog.Error("Worker production deployments require authentication: set a Bearer token in server.auth_token, " +
+			"or inject a config containing auth_token via `wrangler secret put PROVIDER_BRIDGE_CONFIG`")
 		os.Exit(1)
 	}
 

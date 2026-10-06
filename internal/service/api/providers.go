@@ -67,14 +67,14 @@ func (r *Router) handleListProviders(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleGetProvider(w http.ResponseWriter, req *http.Request) {
 	key := req.PathValue("key")
 	if key == "" {
-		respondError(w, http.StatusBadRequest, "invalid_key", "无效的 provider key")
+		respondError(w, http.StatusBadRequest, "invalid_key", "invalid provider key")
 		return
 	}
 
 	cfg := r.runtime.Current()
 	def, ok := cfg.Config.ProviderDefs[key]
 	if !ok {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("provider %q 不存在", key))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("provider %q does not exist", key))
 		return
 	}
 
@@ -121,7 +121,7 @@ func (r *Router) handleGetProvider(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handlePutProvider(w http.ResponseWriter, req *http.Request) {
 	key := req.PathValue("key")
 	if key == "" {
-		respondError(w, http.StatusBadRequest, "invalid_key", "无效的 provider key")
+		respondError(w, http.StatusBadRequest, "invalid_key", "invalid provider key")
 		return
 	}
 
@@ -134,15 +134,15 @@ func (r *Router) handlePutProvider(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 	if body.BaseURL == "" {
-		respondError(w, http.StatusBadRequest, "validation_error", "base_url 不能为空")
+		respondError(w, http.StatusBadRequest, "validation_error", "base_url must not be empty")
 		return
 	}
 	if body.APIKey == "" {
-		respondError(w, http.StatusBadRequest, "validation_error", "api_key 不能为空")
+		respondError(w, http.StatusBadRequest, "validation_error", "api_key must not be empty")
 		return
 	}
 	if body.Protocol == "" {
@@ -164,14 +164,14 @@ func (r *Router) handlePutProvider(w http.ResponseWriter, req *http.Request) {
 		After:     string(afterJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
 		"change_id": chID,
 		"status":    "pending",
-		"message":   "变更已暂存，请调用 POST /changes/apply 使其生效",
+		"message":   "changes staged; call POST /changes/apply to apply",
 	})
 }
 
@@ -179,7 +179,7 @@ func (r *Router) handlePutProvider(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handlePatchProvider(w http.ResponseWriter, req *http.Request) {
 	key := req.PathValue("key")
 	if key == "" {
-		respondError(w, http.StatusBadRequest, "invalid_key", "无效的 provider key")
+		respondError(w, http.StatusBadRequest, "invalid_key", "invalid provider key")
 		return
 	}
 
@@ -192,7 +192,7 @@ func (r *Router) handlePatchProvider(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 
@@ -244,14 +244,14 @@ func (r *Router) handlePatchProvider(w http.ResponseWriter, req *http.Request) {
 		After:     string(afterJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
 		"change_id": chID,
 		"status":    "pending",
-		"message":   "变更已暂存，请调用 POST /changes/apply 使其生效",
+		"message":   "changes staged; call POST /changes/apply to apply",
 	})
 }
 
@@ -259,13 +259,13 @@ func (r *Router) handlePatchProvider(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleDeleteProvider(w http.ResponseWriter, req *http.Request) {
 	key := req.PathValue("key")
 	if key == "" {
-		respondError(w, http.StatusBadRequest, "invalid_key", "无效的 provider key")
+		respondError(w, http.StatusBadRequest, "invalid_key", "invalid provider key")
 		return
 	}
 
 	cfg := r.runtime.Current()
 	if _, ok := cfg.Config.ProviderDefs[key]; !ok {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("provider %q 不存在", key))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("provider %q does not exist", key))
 		return
 	}
 
@@ -275,14 +275,14 @@ func (r *Router) handleDeleteProvider(w http.ResponseWriter, req *http.Request) 
 		TargetKey: key,
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存删除失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage deletion: %v", err))
 		return
 	}
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
 		"change_id": chID,
 		"status":    "pending",
-		"message":   "删除已暂存，请调用 POST /changes/apply 使其生效",
+		"message":   "delete staged; call POST /changes/apply to apply",
 	})
 }
 
@@ -290,14 +290,14 @@ func (r *Router) handleDeleteProvider(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handleTestProvider(w http.ResponseWriter, req *http.Request) {
 	key := req.PathValue("key")
 	if key == "" {
-		respondError(w, http.StatusBadRequest, "invalid_key", "无效的 provider key")
+		respondError(w, http.StatusBadRequest, "invalid_key", "invalid provider key")
 		return
 	}
 
 	cfg := r.runtime.Current()
 	def, ok := cfg.Config.ProviderDefs[key]
 	if !ok {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("provider %q 不存在", key))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("provider %q does not exist", key))
 		return
 	}
 

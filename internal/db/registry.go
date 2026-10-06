@@ -93,7 +93,7 @@ func (r *Registry) Init(ctx context.Context, activeProviderName string) error {
 	for _, c := range r.consumers {
 		if err := r.initConsumer(ctx, c); err != nil {
 			// Per-consumer failure: disable this consumer, continue with others.
-			r.logError("持久化 Consumer 初始化失败", "consumer", c.Name(), "error", err)
+			r.logError("failed to initialize persistence consumer", "consumer", c.Name(), "error", err)
 			c.DisablePersistence(err)
 		}
 	}
@@ -180,7 +180,7 @@ func (r *Registry) initConsumer(ctx context.Context, c Consumer) error {
 }
 
 func (r *Registry) disableAllConsumers(reason error) {
-	r.logError("持久化 Consumer 已禁用：未注册 Provider", "error", reason,
+	r.logError("persistence consumer disabled: no provider registered", "error", reason,
 		"consumer_count", len(r.consumers))
 	for _, c := range r.consumers {
 		c.DisablePersistence(reason)

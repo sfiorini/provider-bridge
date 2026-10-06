@@ -41,19 +41,19 @@ func Run(output io.Writer) {
 }
 
 func WelcomeMessage() string {
-	return "欢迎使用 " + Name + "!"
+	return "Welcome to " + Name + "!"
 }
 
 func RunServer(ctx context.Context, cfg config.Config, errors io.Writer) error {
 	switch cfg.Mode {
 	case config.ModeTransform:
-		slog.Info("启动服务器", "mode", cfg.Mode, "addr", cfg.Addr)
+		slog.Info("starting server", "mode", cfg.Mode, "addr", cfg.Addr)
 		return runTransform(ctx, cfg, errors)
 	case config.ModeCaptureResponse:
-		slog.Info("启动服务器", "mode", cfg.Mode, "addr", cfg.Addr)
+		slog.Info("starting server", "mode", cfg.Mode, "addr", cfg.Addr)
 		return runCaptureResponse(ctx, cfg, errors)
 	case config.ModeCaptureAnthropic:
-		slog.Info("启动服务器", "mode", cfg.Mode, "addr", cfg.Addr)
+		slog.Info("starting server", "mode", cfg.Mode, "addr", cfg.Addr)
 		return runCaptureAnthropic(ctx, cfg, errors)
 	default:
 		return fmt.Errorf("unsupported mode %q", cfg.Mode)
@@ -183,7 +183,7 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 		if dbCfg, loadErr := cs.LoadAll(); loadErr == nil {
 			if len(dbCfg.ProviderDefs) > 0 || len(dbCfg.Routes) > 0 {
 				// DB has existing configuration: use it as the active config.
-				logger.Info("从持久化存储加载配置",
+				logger.Info("loading config from persistent store",
 					"providers", len(dbCfg.ProviderDefs),
 					"routes", len(dbCfg.Routes))
 				cfg = *dbCfg
@@ -215,23 +215,23 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 				serverCfg = config.ServerFromGlobalConfig(&cfg)
 			} else {
 				// DB is empty: seed from YAML config.
-				logger.Info("持久化存储为空，从 YAML 导入种子配置")
+				logger.Info("persistent store empty; importing seed config from YAML")
 				if err := cs.SeedFromConfig(&cfg); err != nil {
-					logger.Warn("config store 种子导入失败", "error", err)
+					logger.Warn("config store seed import failed", "error", err)
 				}
 			}
 		} else if loadErr != nil {
 			if stderrors.Is(loadErr, store.ErrConfigNotSeeded) {
-				logger.Info("持久化存储为空，从 YAML 导入种子配置")
+				logger.Info("persistent store empty; importing seed config from YAML")
 				if err := cs.SeedFromConfig(&cfg); err != nil {
 					return fmt.Errorf("seed config store from YAML: %w", err)
 				}
 			} else {
-				logger.Warn("config store 加载失败", "error", loadErr)
+				logger.Warn("failed to load config store", "error", loadErr)
 			}
 		}
 	} else {
-		logger.Warn("config store 不可用，跳过持久化引导")
+		logger.Warn("config store unavailable; skipping persistence bootstrap")
 	}
 
 	// === Phase 3: Build Runtime ===
@@ -352,18 +352,18 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 // Returns nil when no default provider is configured (all models use explicit routing).
 func resolveDefaultClient(pm *provider.ProviderManager, errors io.Writer) *anthropic.Client {
 	if pm.DefaultKey() == "" {
-		slog.Warn("未配置默认提供商，跳过网页搜索探测和服务器回退")
+		slog.Warn("no default provider configured; skipping web search probe and server fallback")
 		return nil
 	}
 	client, err := pm.ClientForKey(pm.DefaultKey())
 	if err != nil {
-		slog.Warn("默认提供商客户端不可用", "error", err)
+		slog.Warn("default provider client unavailable", "error", err)
 		return nil
 	}
 	if acc, ok := client.(provider.AnthropicClientAccessor); ok {
 		return acc.AnthropicClient()
 	}
-	slog.Warn("默认提供商客户端不支持访问底层客户端")
+	slog.Warn("default provider client does not support accessing the underlying client")
 	return nil
 }
 
@@ -389,13 +389,13 @@ func resolvePerProviderWebSearch(ctx context.Context, cfg config.Config, pm *pro
 			switch support {
 			case config.WebSearchSupportDisabled:
 				pm.SetResolvedWebSearch(key, "disabled")
-				slog.Info("配置禁用网页搜索", "provider", key)
+				slog.Info("config disables web search", "provider", key)
 			case config.WebSearchSupportEnabled:
 				pm.SetResolvedWebSearch(key, "enabled")
-				slog.Info("配置强制启用网页搜索", "provider", key)
+				slog.Info("config forces web search enabled", "provider", key)
 			case config.WebSearchSupportInjected:
 				pm.SetResolvedWebSearch(key, "injected")
-				slog.Info("网页搜索注入模式已启用", "provider", key)
+				slog.Info("web search injection mode enabled", "provider", key)
 			default:
 				// Launch probe in a goroutine to parallelize across providers.
 				keyCopy := key
@@ -405,7 +405,7 @@ func resolvePerProviderWebSearch(ctx context.Context, cfg config.Config, pm *pro
 					resolved := probeProviderWebSearch(ctx, keyCopy, pm)
 					if resolved == "disabled" && cfg.TavilyAPIKey != "" {
 						resolved = "injected"
-						slog.Info("网页搜索自动探测失败，回退到注入模式", "provider", keyCopy)
+						slog.Info("web search auto-probe failed; falling back to injection mode", "provider", keyCopy)
 					}
 					// Also write the candidate key so model-level dedup can find it.
 					if upstreamModel := pm.FirstUpstreamModelForKey(keyCopy); upstreamModel != "" {
@@ -419,28 +419,28 @@ func resolvePerProviderWebSearch(ctx context.Context, cfg config.Config, pm *pro
 			switch support {
 			case config.WebSearchSupportDisabled, config.WebSearchSupportInjected:
 				pm.SetResolvedWebSearch(key, "disabled")
-				slog.Info("响应端网页搜索已禁用", "provider", key, "protocol", protocol, "config", support)
+				slog.Info("responses-side web search disabled", "provider", key, "protocol", protocol, "config", support)
 			default:
 				pm.SetResolvedWebSearch(key, "enabled")
-				slog.Info("已启用响应端网页搜索", "provider", key, "protocol", protocol)
+				slog.Info("responses-side web search enabled", "provider", key, "protocol", protocol)
 			}
 		default:
-			// openai-chat 和 google-genai 无原生 web_search：尊重显式配置；
-			// 未显式配置时，有全局 Tavily key 则启用注入模式，否则禁用。
+			// openai-chat and google-genai have no native web_search: respect explicit config;
+			// when not configured explicitly, enable injection mode if a global Tavily key exists, otherwise disable.
 			switch support {
 			case config.WebSearchSupportDisabled:
 				pm.SetResolvedWebSearch(key, "disabled")
-				slog.Info("配置禁用网页搜索", "provider", key, "protocol", protocol)
+				slog.Info("config disables web search", "provider", key, "protocol", protocol)
 			case config.WebSearchSupportInjected:
 				pm.SetResolvedWebSearch(key, "injected")
-				slog.Info("配置启用网页搜索注入模式", "provider", key, "protocol", protocol)
+				slog.Info("config enables web search injection mode", "provider", key, "protocol", protocol)
 			default:
 				if cfg.TavilyAPIKey != "" {
 					pm.SetResolvedWebSearch(key, "injected")
-					slog.Info("注入式网页搜索已启用", "provider", key, "protocol", protocol)
+					slog.Info("injected web search enabled", "provider", key, "protocol", protocol)
 				} else {
 					pm.SetResolvedWebSearch(key, "disabled")
-					slog.Info("跳过网页搜索：无 Tavily API key", "provider", key, "protocol", protocol)
+					slog.Info("skipping web search: no Tavily API key", "provider", key, "protocol", protocol)
 				}
 			}
 		}
@@ -481,29 +481,29 @@ func resolveModelWebSearch(ctx context.Context, alias, providerKey, upstreamMode
 		case config.WebSearchSupportDisabled, config.WebSearchSupportInjected:
 			pm.SetResolvedWebSearch(modelKey, "disabled")
 			pm.SetResolvedWebSearch(candidateKey, "disabled")
-			slog.Info("模型禁用响应端网页搜索", "model", alias, "config", modelWS)
+			slog.Info("model disables responses-side web search", "model", alias, "config", modelWS)
 		default:
 			pm.SetResolvedWebSearch(modelKey, "enabled")
 			pm.SetResolvedWebSearch(candidateKey, "enabled")
-			slog.Info("模型启用响应端网页搜索", "model", alias)
+			slog.Info("model enables responses-side web search", "model", alias)
 		}
 		return
 	default:
-		// openai-chat 和 google-genai 无原生 web_search：尊重显式的模型级
-		// disabled/injected 配置，其余情况禁用（注入模式由 provider 级回退处理）。
+		// openai-chat and google-genai have no native web_search: respect explicit model-level
+		// disabled/injected config; otherwise disabled (injection mode is handled by provider-level fallback).
 		switch modelWS {
 		case config.WebSearchSupportDisabled:
 			pm.SetResolvedWebSearch(modelKey, "disabled")
 			pm.SetResolvedWebSearch(candidateKey, "disabled")
-			slog.Info("模型配置禁用网页搜索", "model", alias, "protocol", protocol)
+			slog.Info("model config disables web search", "model", alias, "protocol", protocol)
 		case config.WebSearchSupportInjected:
 			pm.SetResolvedWebSearch(modelKey, "injected")
 			pm.SetResolvedWebSearch(candidateKey, "injected")
-			slog.Info("模型配置启用网页搜索注入模式", "model", alias, "protocol", protocol)
+			slog.Info("model config enables web search injection mode", "model", alias, "protocol", protocol)
 		default:
 			pm.SetResolvedWebSearch(modelKey, "disabled")
 			pm.SetResolvedWebSearch(candidateKey, "disabled")
-			slog.Info("跳过模型级网页搜索：不支持的协议", "model", alias, "protocol", protocol)
+			slog.Info("skipping model-level web search: unsupported protocol", "model", alias, "protocol", protocol)
 		}
 		return
 	}
@@ -511,19 +511,19 @@ func resolveModelWebSearch(ctx context.Context, alias, providerKey, upstreamMode
 	case config.WebSearchSupportDisabled:
 		pm.SetResolvedWebSearch(modelKey, "disabled")
 		pm.SetResolvedWebSearch(candidateKey, "disabled")
-		slog.Info("模型配置禁用网页搜索", "model", alias)
+		slog.Info("model config disables web search", "model", alias)
 	case config.WebSearchSupportEnabled:
 		pm.SetResolvedWebSearch(modelKey, "enabled")
 		pm.SetResolvedWebSearch(candidateKey, "enabled")
-		slog.Info("模型配置强制启用网页搜索", "model", alias)
+		slog.Info("model config forces web search enabled", "model", alias)
 	case config.WebSearchSupportInjected:
 		pm.SetResolvedWebSearch(modelKey, "injected")
 		pm.SetResolvedWebSearch(candidateKey, "injected")
-		slog.Info("模型配置启用网页搜索注入模式", "model", alias)
+		slog.Info("model config enables web search injection mode", "model", alias)
 	default:
 		// Dedup: skip probe if candidate key already resolved (from provider-level probe or earlier alias).
 		if existing := pm.ResolvedWebSearch(candidateKey); existing != "" {
-			slog.Debug("模型网页搜索已解析，跳过探测",
+			slog.Debug("model web search resolved; skipping probe",
 				"model", alias,
 				"candidate", candidateKey,
 				"existing", existing,
@@ -540,19 +540,19 @@ func resolveModelWebSearch(ctx context.Context, alias, providerKey, upstreamMode
 func probeProviderWebSearch(ctx context.Context, key string, pm *provider.ProviderManager) string {
 	pc, err := pm.ClientForKey(key)
 	if err != nil {
-		slog.Warn("网页搜索探测跳过：客户端不可用", "provider", key, "error", err)
+		slog.Warn("web search probe skipped: client unavailable", "provider", key, "error", err)
 		return "disabled"
 	}
 
 	upstreamModel := pm.FirstUpstreamModelForKey(key)
 	if upstreamModel == "" {
-		slog.Warn("网页搜索自动探测跳过：无模型路由到提供商", "provider", key)
+		slog.Warn("web search auto-probe skipped: no model routes to provider", "provider", key)
 		return "disabled"
 	}
 
 	acc, ok := pc.(provider.AnthropicClientAccessor)
 	if !ok {
-		slog.Warn("网页搜索探测跳过：客户端不支持访问", "provider", key)
+		slog.Warn("web search probe skipped: client does not support access", "provider", key)
 		return "disabled"
 	}
 	client := acc.AnthropicClient()
@@ -560,14 +560,14 @@ func probeProviderWebSearch(ctx context.Context, key string, pm *provider.Provid
 	defer cancel()
 	supported, err := client.ProbeWebSearch(probeCtx, upstreamModel)
 	if err != nil {
-		slog.Warn("网页搜索自动探测失败", "provider", key, "error", err)
+		slog.Warn("web search auto-probe failed", "provider", key, "error", err)
 		return "disabled"
 	}
 	if !supported {
-		slog.Warn("提供商不支持网页搜索", "provider", key, "model", upstreamModel)
+		slog.Warn("provider does not support web search", "provider", key, "model", upstreamModel)
 		return "disabled"
 	}
-	slog.Info("提供商支持网页搜索", "provider", key, "model", upstreamModel)
+	slog.Info("provider supports web search", "provider", key, "model", upstreamModel)
 	return "enabled"
 }
 func resolveModelWebSearchWithProber(ctx context.Context, modelAlias, providerKey, upstreamModel string, modelWS config.WebSearchSupport, pm *provider.ProviderManager, cfg config.Config, prober webSearchCandidateProber) string {
@@ -590,22 +590,22 @@ func resolveModelWebSearchWithProber(ctx context.Context, modelAlias, providerKe
 
 	supported, err := prober.ProbeWebSearchCandidate(probeCtx, providerKey, upstreamModel)
 	if err != nil {
-		slog.Warn("网页搜索模型探测失败", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel, "error", err)
+		slog.Warn("web search model probe failed", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel, "error", err)
 		if injectedSearchConfigured(cfg, modelAlias, providerKey) {
-			slog.Info("网页搜索模型探测失败，回退到注入模式", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
+			slog.Info("web search model probe failed; falling back to injection mode", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
 			return "injected"
 		}
 		return "disabled"
 	}
 	if supported {
-		slog.Info("模型支持网页搜索", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
+		slog.Info("model supports web search", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
 		return "enabled"
 	}
 	if injectedSearchConfigured(cfg, modelAlias, providerKey) {
-		slog.Info("模型不支持原生网页搜索，回退到注入模式", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
+		slog.Info("model does not support native web search; falling back to injection mode", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
 		return "injected"
 	}
-	slog.Warn("模型不支持网页搜索", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
+	slog.Warn("model does not support web search", "model", modelAlias, "provider", providerKey, "upstream_model", upstreamModel)
 	return "disabled"
 }
 
@@ -631,7 +631,7 @@ func runCaptureResponse(ctx context.Context, cfg config.Config, errors io.Writer
 	if err != nil {
 		return err
 	}
-	slog.Info("响应代理已初始化", "upstream", cfg.ResponseProxy.ProviderBaseURL)
+	slog.Info("response proxy initialized", "upstream", cfg.ResponseProxy.ProviderBaseURL)
 	return runHTTPServer(ctx, cfg.Addr, handler, errors, nil)
 }
 
@@ -648,17 +648,17 @@ func runCaptureAnthropic(ctx context.Context, cfg config.Config, errors io.Write
 	if err != nil {
 		return err
 	}
-	slog.Info("Anthropic 代理已初始化", "upstream", cfg.AnthropicProxy.ProviderBaseURL)
+	slog.Info("Anthropic proxy initialized", "upstream", cfg.AnthropicProxy.ProviderBaseURL)
 	return runHTTPServer(ctx, cfg.Addr, handler, errors, nil)
 }
 
 func logTrace(errors io.Writer, label string, tracer *mbtrace.Tracer) {
 	if !tracer.Enabled() {
-		fmt.Fprintf(errors, "%s 跟踪已禁用\n", label)
+		fmt.Fprintf(errors, "%s tracing disabled\n", label)
 		return
 	}
-	slog.Info("跟踪已启用", "label", label, "dir", tracer.Directory())
-	fmt.Fprintf(errors, "%s 跟踪已启用于 %s\n", label, tracer.Directory())
+	slog.Info("tracing enabled", "label", label, "dir", tracer.Directory())
+	fmt.Fprintf(errors, "%s tracing enabled at %s\n", label, tracer.Directory())
 }
 
 func transformTraceRoot() string {
@@ -688,10 +688,10 @@ func runHTTPServer(ctx context.Context, addr string, handler http.Handler, error
 	}()
 	errCh := make(chan error, 1)
 	go func() {
-		fmt.Fprintf(errors, "%s 监听于 %s\n", Name, addr)
+		fmt.Fprintf(errors, "%s listening on %s\n", Name, addr)
 		consoleURL := fmt.Sprintf("http://%s/console/", addr)
 		fmt.Fprintf(errors, "Web Console: %s\n", consoleURL)
-		slog.Info("HTTP 服务器监听中", "addr", addr, "webui", consoleURL)
+		slog.Info("HTTP server listening", "addr", addr, "webui", consoleURL)
 		errCh <- httpServer.ListenAndServe()
 	}()
 
@@ -710,7 +710,7 @@ func runHTTPServer(ctx context.Context, addr string, handler http.Handler, error
 		if err == http.ErrServerClosed {
 			return nil
 		}
-		slog.Error("HTTP 服务器错误", "error", err)
+		slog.Error("HTTP server error", "error", err)
 		return err
 	}
 }

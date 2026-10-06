@@ -80,11 +80,11 @@ func (s *Server) recordInboundCompletion(
 		reqCost := computeCostWithProviderPricing(pm, s.stats, modelAlias, outcome.Preferred.UpstreamModel, outcome.Preferred.ProviderKey, billingUsage)
 
 		status := "success"
-		pathLabel := "非流式"
+		pathLabel := "non-streaming"
 		if stream {
-			pathLabel = "流式"
+			pathLabel = "streaming"
 		}
-		slog.Info("请求完成",
+		slog.Info("request completed",
 			"request_model", modelAlias,
 			"actual_model", outcome.Preferred.UpstreamModel,
 			"provider", outcome.Preferred.ProviderKey,
@@ -127,14 +127,14 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	requestStart := time.Now()
 
 	if r.Method != http.MethodPost {
-		writeAnthropicError(w, http.StatusMethodNotAllowed, "invalid_request_error", "仅支持 POST 请求")
+		writeAnthropicError(w, http.StatusMethodNotAllowed, "invalid_request_error", "only POST requests are supported")
 		return
 	}
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20))
 	if err != nil {
-		log.Error("读取请求体失败", "error", err)
-		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", "读取请求体失败")
+		log.Error("failed to read request body", "error", err)
+		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", "failed to read request body")
 		return
 	}
 
@@ -158,7 +158,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 
 	route, err := s.resolveModelOrFallback(modelAlias)
 	if err != nil {
-		log.Warn("模型解析失败", "model", modelAlias, "error", err)
+		log.Warn("model resolution failed", "model", modelAlias, "error", err)
 		writeAnthropicError(w, http.StatusNotFound, "not_found_error", err.Error())
 		s.inboundErrorCompletion(modelAlias, requestStart, "resolve_model")
 		return
@@ -180,7 +180,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 
 	outcome, err := s.executeCoreUpstream(r.Context(), coreReq, route, modelAlias, sess)
 	if err != nil {
-		log.Error("上游执行失败", "error", err)
+		log.Error("upstream execution failed", "error", err)
 		record.Error = traceError("core_upstream", err)
 		writeAnthropicError(w, http.StatusBadGateway, inboundAnthropicErrorType(http.StatusBadGateway), err.Error())
 		s.inboundErrorCompletion(modelAlias, requestStart, "core_upstream")
@@ -213,7 +213,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 
 	respAny, err := clientAdapter.FromCoreResponse(r.Context(), outcome.CoreResp)
 	if err != nil {
-		log.Error("响应转换失败", "error", err)
+		log.Error("failed to convert response", "error", err)
 		record.Error = traceError("from_core_response", err)
 		writeAnthropicError(w, http.StatusBadGateway, "api_error", err.Error())
 		s.inboundErrorCompletion(modelAlias, requestStart, "from_core_response")
@@ -241,12 +241,12 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 // Code falls back to its own estimate when the endpoint is absent.
 func (s *Server) handleAnthropicCountTokens(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeAnthropicError(w, http.StatusMethodNotAllowed, "invalid_request_error", "仅支持 POST 请求")
+		writeAnthropicError(w, http.StatusMethodNotAllowed, "invalid_request_error", "only POST requests are supported")
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20))
 	if err != nil {
-		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", "读取请求体失败")
+		writeAnthropicError(w, http.StatusBadRequest, "invalid_request_error", "failed to read request body")
 		return
 	}
 	var payload struct {
@@ -274,7 +274,7 @@ func (s *Server) writeAnthropicSSE(
 
 	for ev := range result.Chan() {
 		if err := writeSSE(w, openai.StreamEvent{Event: ev.Type, Data: ev}); err != nil {
-			slog.Default().Warn("SSE 写入失败，中断流", "error", err)
+			slog.Default().Warn("SSE write failed; aborting stream", "error", err)
 			break
 		}
 	}
@@ -354,7 +354,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method != http.MethodPost {
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "仅支持 POST 请求", Type: "invalid_request_error", Code: "method_not_allowed",
+			Message: "only POST requests are supported", Type: "invalid_request_error", Code: "method_not_allowed",
 		}}
 		writeOpenAIError(w, http.StatusMethodNotAllowed, payload)
 		return
@@ -362,9 +362,9 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, 100<<20))
 	if err != nil {
-		log.Error("读取请求体失败", "error", err)
+		log.Error("failed to read request body", "error", err)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "读取请求体失败", Type: "invalid_request_error",
+			Message: "failed to read request body", Type: "invalid_request_error",
 		}}
 		writeOpenAIError(w, http.StatusBadRequest, payload)
 		return
@@ -393,7 +393,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	route, err := s.resolveModelOrFallback(modelAlias)
 	if err != nil {
-		log.Warn("模型解析失败", "model", modelAlias, "error", err)
+		log.Warn("model resolution failed", "model", modelAlias, "error", err)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
 			Message: err.Error(), Type: "invalid_request_error", Code: "model_not_found",
 		}}
@@ -424,7 +424,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	outcome, err := s.executeCoreUpstream(r.Context(), coreReq, route, modelAlias, sess)
 	if err != nil {
-		log.Error("上游执行失败", "error", err)
+		log.Error("upstream execution failed", "error", err)
 		record.Error = traceError("core_upstream", err)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
 			Message: err.Error(), Type: "server_error", Code: "provider_error",
@@ -481,7 +481,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	respAny, err := clientAdapter.FromCoreResponse(r.Context(), outcome.CoreResp)
 	if err != nil {
-		log.Error("响应转换失败", "error", err)
+		log.Error("failed to convert response", "error", err)
 		record.Error = traceError("from_core_response", err)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
 			Message: err.Error(), Type: "server_error", Code: "conversion_error",
@@ -546,7 +546,7 @@ func (s *Server) writeChatSSE(
 			continue
 		}
 		if _, err := w.Write([]byte("data: " + string(payload) + "\n\n")); err != nil {
-			slog.Default().Warn("SSE 写入失败，中断流", "error", err)
+			slog.Default().Warn("SSE write failed; aborting stream", "error", err)
 			break
 		}
 		if flusher, ok := w.(http.Flusher); ok {

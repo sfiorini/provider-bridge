@@ -42,7 +42,7 @@ func (r *Router) handleGetLogsStream(w http.ResponseWriter, req *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		respondError(w, http.StatusInternalServerError, "stream_unavailable", "日志流不可用")
+		respondError(w, http.StatusInternalServerError, "stream_unavailable", "log stream unavailable")
 		return
 	}
 

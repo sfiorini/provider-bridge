@@ -79,7 +79,7 @@ func (w *FileWriter) WriteTrace(record mbtrace.Record) {
 // WriteCategory writes a trace record to a specific category directory.
 func (w *FileWriter) WriteCategory(category string, requestNumber uint64, record mbtrace.Record) {
 	if _, err := w.tracer.WriteNumbered(category, requestNumber, record); err != nil && w.errors != nil {
-		fmt.Fprintf(w.errors, "跟踪 %s 写入失败: %v\n", category, err)
+		fmt.Fprintf(w.errors, "trace %s write failed: %v\n", category, err)
 	}
 }
 

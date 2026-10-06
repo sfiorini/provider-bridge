@@ -250,7 +250,7 @@ func TestStripImagesFromAnthropic_StripsBase64(t *testing.T) {
 		Messages: []anthropic.Message{{
 			Role: "user",
 			Content: []anthropic.ContentBlock{
-				{Type: "text", Text: "描述图片"},
+				{Type: "text", Text: "describe the image"},
 				{Type: "image", Source: &anthropic.ImageSource{Type: "base64", MediaType: "image/png", Data: "verylongbase64data1234567890"}},
 			},
 		}},
@@ -272,7 +272,7 @@ func TestStripImagesFromAnthropic_StripsBase64(t *testing.T) {
 	foundPlaceholder := false
 	for _, msg := range stripped.Messages {
 		for _, block := range msg.Content {
-			if block.Type == "text" && block.Text != "描述图片" {
+			if block.Type == "text" && block.Text != "describe the image" {
 				foundPlaceholder = true
 			}
 		}
@@ -362,7 +362,7 @@ func TestStripImagesFromAnthropic_MultiTurnDoesNotRestoreImages(t *testing.T) {
 			{
 				Role: "user",
 				Content: []anthropic.ContentBlock{
-					{Type: "text", Text: "第一轮问题"},
+					{Type: "text", Text: "round one question"},
 					{Type: "image", Source: &anthropic.ImageSource{Type: "base64", MediaType: "image/png", Data: "b64_data"}},
 				},
 			},
@@ -384,7 +384,7 @@ func TestStripImagesFromAnthropic_MultiTurnDoesNotRestoreImages(t *testing.T) {
 			{
 				Role: "user",
 				Content: []anthropic.ContentBlock{
-					{Type: "text", Text: "第二轮追问"},
+					{Type: "text", Text: "round two follow-up"},
 				},
 			},
 		},
@@ -425,7 +425,7 @@ func TestStripImagesFromAnthropic_MultiTurnDoesNotRestoreImages(t *testing.T) {
 	if len(stripped.Messages[2].Content) != 1 || stripped.Messages[2].Content[0].Type != "tool_result" {
 		t.Fatal("tool_result message was modified")
 	}
-	if stripped.Messages[3].Content[0].Text != "第二轮追问" {
+	if stripped.Messages[3].Content[0].Text != "round two follow-up" {
 		t.Fatal("second user message was modified")
 	}
 }

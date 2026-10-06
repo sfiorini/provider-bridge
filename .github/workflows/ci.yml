@@ -124,7 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "${TAG}" --draft --title "${TAG}" --notes "待补充 release notes" --verify-tag
+          gh release create "${TAG}" --draft --title "${TAG}" --notes "Release notes TBD" --verify-tag
 
           find dist -type f -name '*.tar.gz' -o -name '*.zip' | while read asset; do
             echo "Uploading: ${asset}"

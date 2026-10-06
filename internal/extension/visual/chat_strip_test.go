@@ -13,7 +13,7 @@ func TestStripImagesFromChat_StripsImageURL(t *testing.T) {
 		Messages: []chat.ChatMessage{{
 			Role: "user",
 			Content: []chat.ContentPart{
-				{Type: "text", Text: "描述图片"},
+				{Type: "text", Text: "describe the image"},
 				{Type: "image_url", ImageURL: &chat.ImageURL{URL: "data:image/png;base64,AAAA", Detail: "auto"}},
 			},
 		}},
@@ -36,7 +36,7 @@ func TestStripImagesFromChat_StripsImageURL(t *testing.T) {
 	if len(parts) != 2 {
 		t.Fatalf("parts = %d, want 2 (original text + placeholder)", len(parts))
 	}
-	if parts[0].Text != "描述图片" {
+	if parts[0].Text != "describe the image" {
 		t.Errorf("part[0].Text = %q, want original prompt preserved", parts[0].Text)
 	}
 	if !strings.Contains(parts[1].Text, "Image #1") {

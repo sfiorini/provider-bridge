@@ -138,7 +138,7 @@ func TestPrependThinkingWarnsWhenUsingRequiredFallback(t *testing.T) {
 		t.Fatalf("fallback thinking block = %+v", got[0].Content)
 	}
 	logText := logs.String()
-	if !strings.Contains(logText, "补空 thinking block") || !strings.Contains(logText, "tool_call_id=call_missing") {
+	if !strings.Contains(logText, "empty thinking block") || !strings.Contains(logText, "tool_call_id=call_missing") {
 		t.Fatalf("warning log = %q", logText)
 	}
 

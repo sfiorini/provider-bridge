@@ -796,7 +796,7 @@ func (s *Server) handleWithAdapters(
 			CacheReadInputTokens:     cachedInput,
 		}
 		reqCost := computeCostWithProviderPricing(pm, s.stats, openAIReq.Model, preferred.UpstreamModel, preferred.ProviderKey, billingUsage)
-		log.Info("请求完成",
+		log.Info("request completed",
 			"request_model", openAIReq.Model,
 			"actual_model", preferred.UpstreamModel,
 			"provider", preferred.ProviderKey,
@@ -1837,7 +1837,7 @@ func (s *Server) handleAdapterStream(
 		CacheReadInputTokens:     cachedInput,
 	}
 	reqCost := computeCostWithProviderPricing(pm, s.stats, openAIReq.Model, candidate.UpstreamModel, candidate.ProviderKey, billingUsage)
-	log.Info("流式请求完成",
+	log.Info("streaming request completed",
 		"model", openAIReq.Model,
 		"actual_model", candidate.UpstreamModel,
 		"provider", candidate.ProviderKey,
@@ -1974,7 +1974,7 @@ func (s *Server) writeCoreResponseAsOpenAIStream(
 		s.stats.Record(openAIReq.Model, candidate.UpstreamModel, statsUsageFromAnthropic(usage, true))
 	}
 	reqCost := computeCostWithProviderPricing(s.providerMgr, s.stats, openAIReq.Model, candidate.UpstreamModel, candidate.ProviderKey, billingUsage)
-	log.Info("流式视觉请求完成",
+	log.Info("streaming visual request completed",
 		"actual_model", candidate.UpstreamModel,
 		"provider", candidate.ProviderKey,
 		"input_total", usage.InputTokens,

@@ -63,14 +63,14 @@ func (r *Router) handleListRoutes(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleGetRoute(w http.ResponseWriter, req *http.Request) {
 	alias := req.PathValue("alias")
 	if alias == "" {
-		respondError(w, http.StatusBadRequest, "invalid_alias", "无效的 route alias")
+		respondError(w, http.StatusBadRequest, "invalid_alias", "invalid route alias")
 		return
 	}
 
 	cfg := r.runtime.Current()
 	route, ok := cfg.Config.Routes[alias]
 	if !ok {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("route %q 不存在", alias))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("route %q does not exist", alias))
 		return
 	}
 
@@ -89,7 +89,7 @@ func (r *Router) handleGetRoute(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handlePutRoute(w http.ResponseWriter, req *http.Request) {
 	alias := req.PathValue("alias")
 	if alias == "" {
-		respondError(w, http.StatusBadRequest, "invalid_alias", "无效的 route alias")
+		respondError(w, http.StatusBadRequest, "invalid_alias", "invalid route alias")
 		return
 	}
 
@@ -101,11 +101,11 @@ func (r *Router) handlePutRoute(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 	if body.Model == "" {
-		respondError(w, http.StatusBadRequest, "validation_error", "model 不能为空")
+		respondError(w, http.StatusBadRequest, "validation_error", "model must not be empty")
 		return
 	}
 
@@ -123,7 +123,7 @@ func (r *Router) handlePutRoute(w http.ResponseWriter, req *http.Request) {
 		After:     string(afterJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
@@ -137,13 +137,13 @@ func (r *Router) handlePutRoute(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleDeleteRoute(w http.ResponseWriter, req *http.Request) {
 	alias := req.PathValue("alias")
 	if alias == "" {
-		respondError(w, http.StatusBadRequest, "invalid_alias", "无效的 route alias")
+		respondError(w, http.StatusBadRequest, "invalid_alias", "invalid route alias")
 		return
 	}
 
 	cfg := r.runtime.Current()
 	if _, ok := cfg.Config.Routes[alias]; !ok {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("route %q 不存在", alias))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("route %q does not exist", alias))
 		return
 	}
 
@@ -153,7 +153,7 @@ func (r *Router) handleDeleteRoute(w http.ResponseWriter, req *http.Request) {
 		TargetKey: alias,
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存删除失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage deletion: %v", err))
 		return
 	}
 

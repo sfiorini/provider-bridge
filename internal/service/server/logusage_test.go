@@ -82,9 +82,9 @@ func TestLogUsageLine_nilSessionStats(t *testing.T) {
 
 	logUsageLine("test-model", "test-actual", stats.Usage{}, nil)
 
-	entry := findSlogEntry(&buf, "请求完成")
+	entry := findSlogEntry(&buf, "request completed")
 	if entry == nil {
-		t.Fatalf("expected slog entry with msg '请求完成', got: %s", buf.String())
+		t.Fatalf("expected slog entry with msg 'request completed', got: %s", buf.String())
 	}
 	assertField(t, entry, "request_model", "test-model")
 	assertField(t, entry, "actual_model", "test-actual")
@@ -136,9 +136,9 @@ func TestLogUsageLine_withSessionStats(t *testing.T) {
 		CacheReadInputTokens:     20_000,
 	}, s)
 
-	entry := findSlogEntry(&buf, "请求完成")
+	entry := findSlogEntry(&buf, "request completed")
 	if entry == nil {
-		t.Fatalf("expected slog entry with msg '请求完成', got: %s", buf.String())
+		t.Fatalf("expected slog entry with msg 'request completed', got: %s", buf.String())
 	}
 
 	assertField(t, entry, "request_model", "test-model")
@@ -164,9 +164,9 @@ func TestLogUsageLine_zeroUsage(t *testing.T) {
 
 	logUsageLine("test-model", "test-actual", stats.Usage{}, s)
 
-	entry := findSlogEntry(&buf, "请求完成")
+	entry := findSlogEntry(&buf, "request completed")
 	if entry == nil {
-		t.Fatalf("expected slog entry with msg '请求完成', got: %s", buf.String())
+		t.Fatalf("expected slog entry with msg 'request completed', got: %s", buf.String())
 	}
 	assertField(t, entry, "request_model", "test-model")
 	assertField(t, entry, "actual_model", "test-actual")

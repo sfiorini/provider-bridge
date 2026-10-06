@@ -90,7 +90,7 @@ func executeCoreSearchLoop(
 		for _, use := range searchUses {
 			result, execErr := executeCoreSearchCall(ctx, tavily, firecrawl, use)
 			if execErr != nil {
-				log.Warn("Core搜索执行失败", "tool", use.ToolName, "error", execErr)
+				log.Warn("core search execution failed", "tool", use.ToolName, "error", execErr)
 				result = fmt.Sprintf("Search error: %s", execErr.Error())
 			}
 			toolResults = append(toolResults, format.CoreContentBlock{
@@ -131,7 +131,7 @@ func executeCoreSearchLoop(
 		if resp == nil {
 			return nil, fmt.Errorf("core search loop: nil response")
 		}
-		log.Debug("Core 搜索循环轮次", "round", round+1, "tools_executed", len(searchUses))
+		log.Debug("core search loop round", "round", round+1, "tools_executed", len(searchUses))
 	}
 	return nil, fmt.Errorf("core search loop exceeded max rounds (%d)", maxRounds)
 }
@@ -314,7 +314,7 @@ func (s *Server) executeChatSearchLoop(
 			for _, tc := range searchCalls {
 				result, execErr := executeChatSearchCall(ctx, tavily, firecrawl, tc)
 				if execErr != nil {
-					log.Warn("Chat搜索执行失败（混合调用）", "tool", tc.Function.Name, "error", execErr)
+					log.Warn("chat search execution failed (mixed calls)", "tool", tc.Function.Name, "error", execErr)
 					result = fmt.Sprintf("Search error: %s", execErr.Error())
 				}
 				toolResultMsgs = append(toolResultMsgs, chat.ChatMessage{
@@ -333,7 +333,7 @@ func (s *Server) executeChatSearchLoop(
 		for _, tc := range searchCalls {
 			result, execErr := executeChatSearchCall(ctx, tavily, firecrawl, tc)
 			if execErr != nil {
-				log.Warn("搜索执行失败", "tool", tc.Function.Name, "error", execErr)
+				log.Warn("search execution failed", "tool", tc.Function.Name, "error", execErr)
 				result = fmt.Sprintf("Search error: %s", execErr.Error())
 			}
 			toolResultMsgs = append(toolResultMsgs, chat.ChatMessage{
@@ -348,7 +348,7 @@ func (s *Server) executeChatSearchLoop(
 		req.Messages = append(req.Messages, msg)
 		req.Messages = append(req.Messages, toolResultMsgs...)
 
-		log.Debug("Chat 搜索循环轮次", "round", round+1, "tools_executed", len(searchCalls))
+		log.Debug("chat search loop round", "round", round+1, "tools_executed", len(searchCalls))
 	}
 	return nil, fmt.Errorf("chat search loop exceeded max rounds (%d)", maxRounds)
 }
@@ -514,7 +514,7 @@ func (s *Server) executeGoogleSearchLoop(
 			for _, fc := range searchCalls {
 				result, execErr := executeGoogleSearchCall(ctx, tavily, firecrawl, fc)
 				if execErr != nil {
-					log.Warn("Google搜索执行失败（混合调用）", "tool", fc.Name, "error", execErr)
+					log.Warn("google search execution failed (mixed calls)", "tool", fc.Name, "error", execErr)
 					result = execErr.Error()
 				}
 				respJSON, _ := json.Marshal(map[string]any{"result": result})
@@ -545,7 +545,7 @@ func (s *Server) executeGoogleSearchLoop(
 		for _, fc := range searchCalls {
 			result, execErr := executeGoogleSearchCall(ctx, tavily, firecrawl, fc)
 			if execErr != nil {
-				log.Warn("Google 搜索执行失败", "tool", fc.Name, "error", execErr)
+				log.Warn("google search execution failed", "tool", fc.Name, "error", execErr)
 				result = fmt.Sprintf("Search error: %s", execErr.Error())
 			}
 			respJSON, _ := json.Marshal(map[string]any{"result": result})
@@ -571,7 +571,7 @@ func (s *Server) executeGoogleSearchLoop(
 			Parts: responseParts,
 		})
 
-		log.Debug("Google 搜索循环轮次", "round", round+1, "tools_executed", len(searchCalls))
+		log.Debug("google search loop round", "round", round+1, "tools_executed", len(searchCalls))
 	}
 	return nil, fmt.Errorf("google search loop exceeded max rounds (%d)", maxRounds)
 }
@@ -731,7 +731,7 @@ func (s *Server) chatSearchBufferedStream(
 			for _, tc := range searchCalls {
 				result, execErr := executeChatSearchCall(ctx, tavily, firecrawl, tc)
 				if execErr != nil {
-					log.Warn("流式搜索执行失败（混合调用）", "tool", tc.Function.Name, "error", execErr)
+					log.Warn("streaming search execution failed (mixed calls)", "tool", tc.Function.Name, "error", execErr)
 					result = fmt.Sprintf("Search error: %s", execErr.Error())
 				}
 				toolResultMsgs = append(toolResultMsgs, chat.ChatMessage{
@@ -759,7 +759,7 @@ func (s *Server) chatSearchBufferedStream(
 		for _, tc := range searchCalls {
 			result, execErr := executeChatSearchCall(ctx, tavily, firecrawl, tc)
 			if execErr != nil {
-				log.Warn("搜索执行失败", "tool", tc.Function.Name, "error", execErr)
+				log.Warn("search execution failed", "tool", tc.Function.Name, "error", execErr)
 				result = fmt.Sprintf("Search error: %s", execErr.Error())
 			}
 			toolResultMsgs = append(toolResultMsgs, chat.ChatMessage{
@@ -780,7 +780,7 @@ func (s *Server) chatSearchBufferedStream(
 		})
 		req.Messages = append(req.Messages, toolResultMsgs...)
 
-		log.Debug("Chat 流式搜索轮次", "round", round+1, "tools_executed", len(searchCalls))
+		log.Debug("chat streaming search round", "round", round+1, "tools_executed", len(searchCalls))
 	}
 	if exhausted && maxRounds > 0 {
 		return nil, fmt.Errorf("chat streaming search loop exceeded max rounds (%d)", maxRounds)

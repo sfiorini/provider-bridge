@@ -92,7 +92,7 @@ func (r *Router) handleGetSessions(w http.ResponseWriter, req *http.Request) {
 // GET /stats
 func (r *Router) handleGetStats(w http.ResponseWriter, req *http.Request) {
 	if r.stats == nil {
-		respondJSON(w, http.StatusOK, map[string]string{"message": "统计信息不可用"})
+		respondJSON(w, http.StatusOK, map[string]string{"message": "stats unavailable"})
 		return
 	}
 
@@ -103,7 +103,7 @@ func (r *Router) handleGetStats(w http.ResponseWriter, req *http.Request) {
 // GET /stats/summary
 func (r *Router) handleGetStatsSummary(w http.ResponseWriter, req *http.Request) {
 	if r.stats == nil {
-		respondJSON(w, http.StatusOK, map[string]string{"message": "统计信息不可用"})
+		respondJSON(w, http.StatusOK, map[string]string{"message": "stats unavailable"})
 		return
 	}
 

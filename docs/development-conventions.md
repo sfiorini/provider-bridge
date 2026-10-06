@@ -111,7 +111,7 @@ config, logger, modelref, session, db → （无内部依赖）
 
 - 使用 `fmt.Errorf("context: %w", err)` 包裹错误链
 - 定义具名错误类型（`RequestError`、`ProviderError`、`CachePlanError`）
-- 错误消息使用中文（项目测试用户为中文用户）
+- Error and log messages are English.
 
 ### 日志
 

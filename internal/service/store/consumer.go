@@ -129,7 +129,7 @@ func (c *ConfigStoreConsumer) BindStore(s db.Store) error {
 	c.store = s
 	c.configStore = NewSQLiteStore(s, c.logger, c.extensionSpecs...)
 	if c.logger != nil {
-		c.logger.Info("config_store 持久化已启用")
+		c.logger.Info("config_store persistence enabled")
 	}
 	return nil
 }
@@ -140,7 +140,7 @@ func (c *ConfigStoreConsumer) DisablePersistence(reason error) {
 	c.store = nil
 	c.configStore = nil
 	if c.logger != nil {
-		c.logger.Error("config_store 持久化已禁用", "error", reason)
+		c.logger.Error("config_store persistence disabled", "error", reason)
 	}
 }
 

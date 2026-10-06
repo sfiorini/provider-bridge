@@ -146,7 +146,7 @@ func logBillingUsageLine(requestModel, actualModel string, usage stats.BillingUs
 		summary = sessionStats.Summary()
 	}
 	rwRatio := stats.BillingCacheRWRatio(usage)
-	slog.Info("请求完成",
+	slog.Info("request completed",
 		"request_model", requestModel,
 		"actual_model", actualModel,
 		"input_fresh", usage.FreshInputTokens,

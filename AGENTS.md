@@ -239,8 +239,9 @@ pick the right HTTP client for the provider.
 ### 3.5 House conventions
 
 - Go 1.25+ module `providerbridge` (binary name still `providerbridge` — cosmetic).
-- Package docs on every file; Chinese log/error messages in the server
-  layer (`"请求完成"`, `"读取请求体失败"`); English code comments.
+- Package docs on every file; **error and log messages are English**
+  (institutional rule since the 2026-10 remediation — see
+  docs/development-conventions.md).
 - `internal/protocol/*` must not import `internal/service` or
   `internal/extension` (no reverse dependencies).
 - Test tiers: unit tests per package (`go test ./...`), `internal/e2e/`

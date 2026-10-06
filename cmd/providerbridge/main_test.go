@@ -82,10 +82,10 @@ routes:
 	}
 	output := stderr.String()
 	for _, want := range []string{
-		"Provider Bridge 启动失败：配置文件加载失败",
-		"配置文件: " + configPath,
+		"Provider Bridge failed to start: failed to load config file",
+		"config file: " + configPath,
 		"providers.openai.protocol must be \"anthropic\", \"openai-response\", \"google-genai\", or \"openai-chat\"",
-		"Responses 直通请使用 openai-response",
+		"use openai-response for Responses passthrough",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stderr missing %q:\n%s", want, output)
@@ -136,7 +136,7 @@ proxy:
 	if string(after) != string(before) {
 		t.Fatalf("existing default config was overwritten\nbefore:\n%s\nafter:\n%s", before, after)
 	}
-	if strings.Contains(stderr.String(), "已创建默认配置") {
+	if strings.Contains(stderr.String(), "created default config") {
 		t.Fatalf("stderr should not mention default config creation for existing config:\n%s", stderr.String())
 	}
 }
@@ -203,7 +203,7 @@ func TestRunCreatesStarterConfigWhenDefaultConfigIsMissing(t *testing.T) {
 		t.Fatalf("sqlite db path = %q, want absolute path", dbPath)
 	}
 	output := stderr.String()
-	if !strings.Contains(output, "已创建默认配置") || !strings.Contains(output, configPath) {
+	if !strings.Contains(output, "created default config") || !strings.Contains(output, configPath) {
 		t.Fatalf("stderr missing starter config creation notice with path:\n%s", output)
 	}
 }
@@ -229,15 +229,15 @@ func TestRunExplicitMissingConfigStillFailsFast(t *testing.T) {
 	}
 	output := stderr.String()
 	for _, want := range []string{
-		"Provider Bridge 启动失败：配置文件加载失败",
-		"配置文件: " + missingPath,
+		"Provider Bridge failed to start: failed to load config file",
+		"config file: " + missingPath,
 		"read config " + missingPath,
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("stderr missing %q:\n%s", want, output)
 		}
 	}
-	if strings.Contains(output, "已创建默认配置") {
+	if strings.Contains(output, "created default config") {
 		t.Fatalf("stderr should not mention default config creation:\n%s", output)
 	}
 }
