@@ -4,14 +4,14 @@
 Provider Bridge is, where it came from, everything that was changed and why,
 how it works inside, and how to develop against it. Any AI agent (or human)
 starting work in this repo should treat this as the authoritative overview
-alongside `deploy/mini/PATCHES.md` (deployment runbook) and the code itself.
+alongside [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and the code itself.
 
 ---
 
 ## 1. What Provider Bridge is
 
 **Provider Bridge is a self-hosted, multi-protocol AI model gateway.** One
-process, one config, one token — and every AI consumer in the homelab talks to
+process, one config, one token — and every AI consumer talks to
 every model provider through it:
 
 - Change a provider (add/remove/rotate keys, swap models, adjust pricing)
@@ -32,7 +32,7 @@ consumer), visual orchestration for image-capable models, DeepSeek reasoning
 replay caching, per-model pricing/usage stats, tracing, an embedded web
 console, and a persistent SQLite config graph manageable via a management API.
 
-### Current consumers (homelab deployment on "mini")
+### Current consumers (reference deployment)
 
 | Consumer | Wire | Notes |
 |---|---|---|
@@ -40,7 +40,7 @@ console, and a persistent SQLite config graph manageable via a management API.
 | Claude Code | Anthropic Messages | opus→mistral/zai-glm-5-3, sonnet→deepseek/deepseek-v4-pro, haiku→zen/space-bunny-free |
 | LibreChat | Chat Completions | single "Provider Bridge" endpoint, model list fetched live |
 | Open WebUI | OpenAI type, api_type `responses` | reads `/v1/models` OpenAI shape |
-| Affiora (morphic fork) | Chat Completions | joined via the compose network `provider-bridge_default`; default model `mistral/zai-glm-5-3` |
+| Affiora | Chat Completions | joins via the same compose network; default model `mistral/zai-glm-5-3` |
 
 ---
 
@@ -254,14 +254,13 @@ pick the right HTTP client for the provider.
 
 ---
 
-## 4. Deployment (homelab)
+## 4. Deployment (Docker)
 
-Lives on host "mini" at `/opt/docker/provider-bridge`:
-`docker-compose.yml` (container `provider-bridge`, image `provider-bridge:latest`,
-port 38440), `config.yml` (seed/mirror), `data/` (SQLite config graph). The
-tracked deployment runbooks live in this repo under `deploy/mini/`
-(`PATCHES.md` incl. rollback, `update.sh`, `codex_regen.sh`,
-`MODEL-METADATA-RUNBOOK.md`, `RENAME-CUTOVER.md`) and are copied onto the host.
+A deployment runs one container from `docker-compose.example.yml` (service
+`providerbridge`, image `providerbridge:local` or a published release
+image), published on port `38440`, with `config.yml` as the seed/mirror
+and `data/` holding the SQLite config graph. See
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full modes and gotchas.
 
 Gotchas that bite (each caused a real incident):
 - The container is **distroless nonroot**: `data/` must be owned
@@ -275,8 +274,8 @@ Gotchas that bite (each caused a real incident):
   transactions when the source is running; stop the source container first
   (a clean close checkpoints the WAL — then only the main db is needed).
 
-Consumers connect to `mini:38440`, or from the Mac through the SSH tunnel
-LaunchAgent `com.fiorinis.providerbridge-tunnel` (`localhost:38440`).
+Consumers connect with the target that matches their network position — see
+the connection-target table in [docs/CONSUMERS.md](docs/CONSUMERS.md).
 
 ### 4.1 End-to-end verification matrix (run after any meaningful change)
 
@@ -287,11 +286,10 @@ Against the live bridge (token = `server.auth_token` in `config.yml`):
 2. **Claude Code shape**: `POST /v1/messages` streaming AND non-stream, with
    thinking and with tools → expect proper SSE sequence / content blocks;
    then `claude -p "Reply with exactly: OK" --model sonnet` (and haiku).
-3. **LibreChat / Affiora shape**: `POST /v1/chat/completions` non-stream +
+3. **LibreChat / Affiora shape** — `POST /v1/chat/completions` non-stream +
    streaming with tools (arguments must be JSON strings) → verify from
-   inside the LibreChat container against `host.docker.internal:38440`,
-   and from inside the affiora container against
-   `http://provider-bridge:38440` (AI SDK datastream e2e).
+   inside a consumer container, using the connection target that matches its
+   network position (see [docs/CONSUMERS.md](docs/CONSUMERS.md)).
 4. **Models**: `GET /v1/models` → OpenAI `object`/`data[]` with slug ids,
    deduplicated against route aliases.
 5. **Web search**: a `web_search` tool request through `/v1/messages` or
@@ -302,24 +300,17 @@ Against the live bridge (token = `server.auth_token` in `config.yml`):
 
 ## 5. Development workflow
 
-The canonical dev clone is `~/Projects/provider-bridge/src` (Mac), remote
-`origin` = `github.com/sfiorini/provider-bridge` (private). No local Go/Docker
-on the Mac: build and test on mini inside `golang:1.27-bookworm`.
+Clone the repository and branch from `main` (see
+[CONTRIBUTING.md](CONTRIBUTING.md)). If your workstation has no local Go,
+build and test inside the reference container:
 
-    # edit on the Mac, then:
-    rsync -a --delete ~/Projects/provider-bridge/src/ mini:/tmp/pb-build/   # or to the deploy src
-    ssh mini 'sudo docker run --rm -v pb-gomod:/go/pkg/mod -v /tmp/pb-build:/app -w /app golang:1.27-bookworm go test ./...'
-    # deploy: rsync to /opt/docker/provider-bridge/src (sudo), docker compose build && up -d
-    # Note: CI never builds the Dockerfile; the golang:1.27 builder image is first exercised by mini's docker compose build.
+    docker run --rm -v "$PWD":/app -w /app golang:1.27-bookworm go test ./...
 
-**Commit before deploying** so GitHub, mini and the Mac stay in sync.
-Deployments follow `deploy/mini/PATCHES.md`; the update procedure for upstream
-changes is `deploy/mini/update.sh` (git pull + rebuild + health check).
-
-Auto-synced provider: the OpenCode Zen free models are reconciled daily by
-`~/.local/bin/providerbridge-zen-sync` on the Mac (LaunchAgent) — it talks to the
-config graph via the tunnel, mirrors `config.yml`, restarts the container,
-and regenerates + installs the Codex catalog. Don't hand-edit zen models.
+GitHub CI runs the same suites (`.github/workflows/ci.yml`) plus the
+cross-platform builds on every push. **Commit before deploying** so the
+repository and the deployment stay in sync. Deployments follow
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md); the update procedure is pull →
+`docker compose build` → `up -d` → health check.
 
 ## 6. Where this is going
 
