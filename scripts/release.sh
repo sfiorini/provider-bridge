@@ -65,7 +65,7 @@ LAST_TAG="$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || true
 if [ -n "$LAST_TAG" ]; then
     git log "$LAST_TAG..HEAD" --pretty=format:'- %s' --no-merges > /tmp/pb-rel-body.$$ 2>/dev/null || : > /tmp/pb-rel-body.$$
 else
-    git log --pretty=format:'- %s' --no-merges > /tmp/pb-rel-body.$$ || : > /tmp/pb-rel-body.$$
+    printf -- '- Initial release\n' > /tmp/pb-rel-body.$$
 fi
 [ -f "$SCRIPT_DIR/../CHANGELOG.md" ] || printf '# Changelog\n\n## [Unreleased]\n' > "$SCRIPT_DIR/../CHANGELOG.md"
 [ -s "/tmp/pb-rel-body.$$" ] || printf -- '- Version bump\n' > "/tmp/pb-rel-body.$$"
