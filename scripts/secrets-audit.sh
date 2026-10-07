@@ -3,8 +3,10 @@
 #
 # Proves that no real operator credential (API key, access/bearer token,
 # password, private key) is reachable from this repository: working tree,
-# every commit reachable from any ref (history, tags, refs/pull/*), and
-# every commit message.
+# every commit reachable from any ref (history, tags, refs/pull/*), every
+# commit message, and every tag message (annotated tags are public on the
+# release page; a lightweight tag's %(contents) is its commit message,
+# which is also covered here, advisory-only).
 #
 # Modes:
 #   (default)    report all findings: DIRTY (high-confidence), REVIEW
@@ -15,7 +17,7 @@
 #   -h, --help   print this header
 #
 # Exit codes: 0 = clean / self-test OK; 1 = DIRTY finding(s); 2 = usage error;
-#             3 = internal error (key extraction).
+#             3 = internal error (key extraction or failed scan stage).
 #
 # Constraints: macOS (BSD grep) and Linux safe; no grep -P. Never prints a
 # full secret value (matches masked to first/last 4 chars). No network
@@ -44,18 +46,22 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --gate) GATE=1; shift ;;
         --self-test) SELF_TEST=1; shift ;;
-        -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
         *) echo "unknown flag: $1 (usage: scripts/secrets-audit.sh [--gate] [--self-test])" >&2; exit 2 ;;
     esac
 done
 
 # High-confidence secret shapes (ERE). The sk- branch requires at least one
 # digit followed by 15+ key-class chars so hyphenated prose (e.g. "risk-based")
-# cannot trip it.
-RE_HARD='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]*[0-9][A-Za-z0-9_-]{15,}|tvly-[A-Za-z0-9_-]{16,}|gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|Bearer [A-Za-z0-9._~+/=-]{20,}'
+# cannot trip it. The last branch is the Telegram bot-token shape
+# (8-10 digits, colon, 35 key-class chars) - the owner's known leak vector.
+RE_HARD='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]*[0-9][A-Za-z0-9_-]{15,}|tvly-[A-Za-z0-9_-]{16,}|gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|Bearer [A-Za-z0-9._~+/=-]{20,}|[0-9]{8,10}:[A-Za-z0-9_-]{35}'
 
 # Generic credential assignment (REVIEW/INFO only; NEVER fails the gate).
-RE_INFO="(api_key|apikey|api_token|auth_token|access_token|secret|password|passwd)[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_./+=-]{8,}"
+# Key names beyond the obvious api_key/password family: bot_token and
+# database_url/dsn name the remaining credential classes named in the M8
+# plan; a bot_token VALUE is high-confidence and caught by RE_HARD anyway.
+RE_INFO="(api_key|apikey|api_token|auth_token|access_token|bot_token|database_url|dsn|secret|password|passwd)[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_./+=-]{8,}"
 
 # Placeholder markers: a REVIEW candidate whose matched text contains one of
 # these word-boundary markers (or a <...> / ${...} template) is downgraded to
@@ -157,53 +163,74 @@ strip_whitelist() { # <line> -> line with whole-token fixture occurrences remove
 }
 
 emit() { # <origin> <location> <content-line> - classify one hit
-    local origin="$1" loc="$2" line="$3" rest m
+    local origin="$1" loc="$2" line="$3" rest m ms
+    local rc  # shadows scan's rc; fail_loud still closes over scan's $tmp
     rest="$(strip_whitelist "$line")"
-    if printf '%s\n' "$rest" | grep -Eiq -- "$RE_HARD"; then
+    # Fail-closed classification: a grep ERROR (exit >= 2) must abort with
+    # exit 3 - as a bare if-condition an error would read as "no match"
+    # and could let a real secret pass the gate as CLEAN.
+    rc=0
+    printf '%s\n' "$rest" | grep -Eiq -- "$RE_HARD" || rc="$?"
+    [ "$rc" -le 1 ] || fail_loud "RE_HARD classification failed (grep exit $rc)"
+    if [ "$rc" -eq 0 ]; then
         HARD=$((HARD + 1))
+        # (safe `|| true`: the -q test just proved this pattern+input
+        # compile and match, so the -o re-run can only exit 0 here)
         m="$(printf '%s\n' "$rest" | grep -Eio -- "$RE_HARD" | head -n 1 || true)"
         printf 'DIRTY  %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
         return 0
     fi
+    # Every RE_INFO candidate on the line is classified and reported, not
+    # just the first: a line like "secret: <placeholder> password: <real>"
+    # must surface the real value too. The candidates are extracted once
+    # into a variable so the loop below runs in this shell (counters).
     if [ "$rest" = "$line" ]; then
-        # Nothing was stripped, so the stripped-line RE_INFO test is the
-        # very same test as the line test: extract the first match once
-        # and use it both as the line-match gate and as the placeholder
-        # input (identical result to the two-stage path below, one grep
-        # fewer per line).
-        m="$(printf '%s\n' "$line" | grep -Eio -- "$RE_INFO" | head -n 1 || true)"
-        if [ -n "$m" ]; then
-            if printf '%s\n' "$m" | grep -Eiq -- "$RE_PLACEHOLDER"; then
+        # Nothing was stripped, so the candidates come from the line
+        # itself and the extraction doubles as the line-match test
+        # (one grep per line, same as before).
+        rc=0
+        ms="$(printf '%s\n' "$line" | grep -Eio -- "$RE_INFO" || rc="$?")"
+        [ "$rc" -le 1 ] || fail_loud "RE_INFO classification failed (grep exit $rc)"
+    else
+        rc=0
+        printf '%s\n' "$line" | grep -Eiq -- "$RE_INFO" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "RE_INFO classification failed (grep exit $rc)"
+        if [ "$rc" -eq 0 ]; then
+            rc=0
+            printf '%s\n' "$rest" | grep -Eiq -- "$RE_INFO" || rc="$?"
+            [ "$rc" -le 1 ] || fail_loud "RE_INFO classification failed (grep exit $rc)"
+            if [ "$rc" -eq 0 ]; then
+                # A fixture was stripped but a real-looking candidate remains:
+                # classify the survivors only (the fixture was whitelisted).
+                # (safe `|| true`: the -q test just matched this exact
+                # pattern+input, so the -o re-run can only exit 0 here)
+                ms="$(printf '%s\n' "$rest" | grep -Eio -- "$RE_INFO" || true)"
+            else
                 INFO=$((INFO + 1))
                 if [ "$GATE" -eq 0 ]; then
-                    printf 'INFO   %-10s %s  (placeholder-shaped value; not a gate failure)\n' "$origin" "$loc"
+                    printf 'INFO   %-10s %s  (whitelisted fixture; not a gate failure)\n' "$origin" "$loc"
                 fi
-            else
-                REVIEW=$((REVIEW + 1))
-                printf 'REVIEW %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
-            fi
-        fi
-        return 0
-    fi
-    if printf '%s\n' "$line" | grep -Eiq -- "$RE_INFO"; then
-        if printf '%s\n' "$rest" | grep -Eiq -- "$RE_INFO"; then
-            m="$(printf '%s\n' "$rest" | grep -Eio -- "$RE_INFO" | head -n 1 || true)"
-            if printf '%s\n' "$m" | grep -Eiq -- "$RE_PLACEHOLDER"; then
-                INFO=$((INFO + 1))
-                if [ "$GATE" -eq 0 ]; then
-                    printf 'INFO   %-10s %s  (placeholder-shaped value; not a gate failure)\n' "$origin" "$loc"
-                fi
-            else
-                REVIEW=$((REVIEW + 1))
-                printf 'REVIEW %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
+                return 0
             fi
         else
-            INFO=$((INFO + 1))
-            if [ "$GATE" -eq 0 ]; then
-                printf 'INFO   %-10s %s  (whitelisted fixture; not a gate failure)\n' "$origin" "$loc"
-            fi
+            return 0
         fi
     fi
+    while IFS= read -r m; do
+        [ -n "$m" ] || continue
+        rc=0
+        printf '%s\n' "$m" | grep -Eiq -- "$RE_PLACEHOLDER" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "placeholder classification failed (grep exit $rc)"
+        if [ "$rc" -eq 0 ]; then
+            INFO=$((INFO + 1))
+            if [ "$GATE" -eq 0 ]; then
+                printf 'INFO   %-10s %s  (placeholder-shaped value; not a gate failure)\n' "$origin" "$loc"
+            fi
+        else
+            REVIEW=$((REVIEW + 1))
+            printf 'REVIEW %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
+        fi
+    done <<< "$ms"
     return 0
 }
 
@@ -245,33 +272,93 @@ p
 g
 p
 }
+/^TAG\|/{h
+s/^TAG\|([^:]*):[0-9]*://
+s/%/%25/g
+s;/;%2F;g
+s/^/G/
+p
+g
+p
+}
 '
 
 scan() { # scans the repository at $PWD
-    local tmp seen hits keys f commit r path lineno content raw kind body line key
+    local tmp seen hits keys f commit r path lineno content raw kind body line key rc revs tag tag_esc files
     tmp="$(mktemp -d)"
     seen="$(mktemp -d)"
     hits="$tmp/hits"
     keys="$tmp/keys"
+    revs="$tmp/revs"
+    files="$tmp/files"
     : > "$hits"
 
+    # A collection stage that ERRORS must abort loudly (exit 3) and never
+    # print CLEAN: `|| true` cannot tell exit 1 = "no match" (normal) from
+    # exit >= 2 = the stage itself failed (unreadable file, corrupt object,
+    # broken pipe), so swallowing it would turn a broken scan into a false
+    # CLEAN. Likewise a git rev-list ERROR is not the same thing as an
+    # empty repo: the rev list is written to a file and the history/
+    # message stage runs only on an explicit success check.
+    fail_loud() { # <message>
+        rm -rf "$tmp" "$seen"
+        echo "error: secrets-audit: $1" >&2
+        exit 3
+    }
+
     echo "scan: working tree" >&2
+    # The file list is collected into a file with an explicit status check:
+    # through a process substitution a `git ls-files` ERROR (unreadable
+    # index, not a repo anymore) looks exactly like "no tracked files" -
+    # the tree stage would silently contribute nothing while the gate
+    # still prints CLEAN. Exit 1 = no match stays allowed.
+    rc=0
+    git ls-files -z --cached --others --exclude-standard > "$files" || rc="$?"
+    [ "$rc" -le 1 ] || fail_loud "git ls-files failed (exit $rc)"
     while IFS= read -r -d '' f; do
         [ -f "$f" ] || continue
+        rc=0
         grep -H -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$f" \
-            | sed 's/^/TREE|/' >> "$hits" || true
-    done < <(git ls-files -z --cached --others --exclude-standard)
+            | sed 's/^/TREE|/' >> "$hits" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "working-tree scan failed for $f (grep exit $rc)"
+    done < "$files"
 
-    if [ -n "$(git rev-list --all)" ]; then
-        echo "scan: full history ($(git rev-list --all | wc -l | tr -d ' ') commits)" >&2
-        git grep -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" $(git rev-list --all) -- \
-            | sed 's/^/HIST|/' >> "$hits" || true
+    # Annotated tag messages are public (release page) and must go through
+    # the same classification; a lightweight tag's %(contents) is its
+    # commit message (already covered by the commit-message stage below,
+    # advisory-only). The sed delimiter is ~ because ~ is forbidden in
+    # ref names, so the tag name can never collide with it; & is escaped
+    # (it is legal in ref names and special in sed replacements).
+    echo "scan: tag messages" >&2
+    rc=0
+    git for-each-ref --format='%(refname)' refs/tags > "$revs.tags" || rc="$?"
+    [ "$rc" -eq 0 ] || fail_loud "git for-each-ref refs/tags failed (exit $rc)"
+    while IFS= read -r tag; do
+        tag_esc="${tag//&/\\&}"
+        rc=0
+        git for-each-ref --format='%(contents)' "$tag" < /dev/null \
+            | grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" \
+            | sed "s~^~TAG|$tag_esc:~" >> "$hits" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "tag-message scan failed for $tag (exit $rc)"
+    done < "$revs.tags"
+
+    rc=0
+    git rev-list --all > "$revs" || rc="$?"
+    [ "$rc" -eq 0 ] || fail_loud "git rev-list --all failed (exit $rc)"
+    if [ -s "$revs" ]; then
+        echo "scan: full history ($(wc -l < "$revs" | tr -d ' ') commits)" >&2
+        rc=0
+        git grep -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" $(cat "$revs") -- \
+            | sed 's/^/HIST|/' >> "$hits" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "history scan failed (git grep exit $rc)"
         echo "scan: commit messages" >&2
-        for commit in $(git rev-list --all); do
-            git log -1 --format='%B' "$commit" \
+        while IFS= read -r commit; do
+            rc=0
+            git log -1 --format='%B' "$commit" < /dev/null \
                 | grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" \
-                | sed "s/^/MSG|$commit:/" >> "$hits" || true
-        done
+                | sed "s/^/MSG|$commit:/" >> "$hits" || rc="$?"
+            [ "$rc" -le 1 ] || fail_loud "commit-message scan failed for $commit (exit $rc)"
+        done < "$revs"
     fi
 
     # One streaming pass builds the dedupe keys (C speed); the bash loop
@@ -312,6 +399,12 @@ scan() { # scans the repository at $PWD
                 lineno="${r%%:*}"; content="${r#*:}"
                 emit commit-msg "${commit:0:8}:${lineno}" "$content"
                 ;;
+            TAG)
+                body="${raw:4}"
+                tag="${body%%:*}"; r="${body#*:}"
+                lineno="${r%%:*}"; content="${r#*:}"
+                emit tag "${tag#refs/tags/}:${lineno}" "$content"
+                ;;
         esac
     done < "$keys"
 
@@ -325,7 +418,7 @@ scan() { # scans the repository at $PWD
 }
 
 self_test() {
-    local tmp fake out
+    local tmp tmp2 tmp3 fake out tg rc
     tmp="$(mktemp -d)" || return 2
     fake="sk-ant-self""test-0123456789abcdefghij"
     out="$tmp/out"
@@ -394,8 +487,91 @@ self_test() {
     #    commit so far (4 commits), so each of its 2 lines yields 4 history
     #    hits; identical (kind, path, content) findings must be reported
     #    ONCE, not once per commit.
+    # (|| true is safe: the expected INFO lines are asserted next, so an
+    #  errored scan cannot pass the step - it just fails it differently)
     ( cd "$tmp" && "$SELF" ) > "$out" 2>&1 || true
     [ "$(grep -Fc 'INFO   history' "$out")" = "2" ] || { echo "self-test FAIL: expected exactly 2 deduplicated INFO history lines (got $(grep -Fc 'INFO   history' "$out"))" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 7) regression guard for the rev-list handling rework: a repo with
+    #    zero commits (git rev-list --all succeeds with EMPTY output) must
+    #    still scan clean - an empty rev list is not an error.
+    tmp2="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp2" init -q
+    if ( cd "$tmp2" && "$SELF" --gate ) > "$out" 2>&1; then :; else
+        echo "self-test FAIL: empty repo must pass the gate" >&2
+        sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp2"; return 1
+    fi
+    grep -q '^SECRETS AUDIT: CLEAN' "$out" || { echo "self-test FAIL: empty repo must report CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp2"; return 1; }
+    rm -rf "$tmp2"
+
+    # 8) coverage: the Telegram bot-token shape (owner's known leak
+    #    vector) must be DIRTY, and a database_url assignment must be
+    #    visible (REVIEW), not silently skipped.
+    # The token literal is split ("…:AA""Hf…") so the fixture inside THIS
+    # script cannot match RE_HARD when the gate scans its own source - the
+    # same idiom as the fake sk- token above; ditto the database_url value.
+    tg="123456789:AA""HfLa9xQm2Zb4NcV7pD3wE8rT5uY1oK6sX"
+    printf 'bot_token: %s\nDATABASE_URL: post''gres://app:realpass@db.internal/app\n' "$tg" > "$tmp/bots.yml"
+    # (|| true is safe: the expected DIRTY/REVIEW lines are asserted next,
+    #  so an errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
+    grep -Fq '1234...K6sX' "$out" || { echo "self-test FAIL: Telegram bot-token shape must be DIRTY" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    grep -Fq 'DATA...gres' "$out" || { echo "self-test FAIL: database_url assignment must be reported (REVIEW)" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -Fq -- "$tg" "$out"; then echo "self-test FAIL: full token value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 9) every RE_INFO candidate on a line must be reported, not just the
+    #    first: the second assignment below must produce a REVIEW line.
+    # ("pass""word" split so this fixture cannot REVIEW-flag the script
+    # itself once every candidate on a line is reported.)
+    printf 'secret: test-12345678 pass''word: prodp4ssword9\n' > "$tmp/multi.txt"
+    # (|| true is safe: the expected REVIEW line is asserted next, so an
+    #  errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" ) > "$out" 2>&1 || true
+    grep -Fq 'pass...ord9' "$out" || { echo "self-test FAIL: second candidate on a multi-assignment line must be reported" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 10) annotated tag messages are public (release page) and must be
+    #     scanned: a token in a tag message must be DIRTY.
+    git -C "$tmp" tag -a -m "release: token $fake" v9.9.9
+    # (|| true is safe: the expected DIRTY tag line is asserted next, so an
+    #  errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
+    grep -Fq 'DIRTY  tag' "$out" || { echo "self-test FAIL: secret in an annotated tag message must be DIRTY" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 11) fail-closed collection: a stage that ERRORS (here: an unreadable
+    #     tracked file makes the tree-scan grep exit 2) must abort with a
+    #     non-zero exit and never print CLEAN. (Assumes a non-root runner:
+    #     root can read chmod-000 files.)
+    printf 'plain\n' > "$tmp/unreadable.txt"
+    git -C "$tmp" add -A
+    git -C "$tmp" commit -qm "add file that becomes unreadable"
+    chmod 000 "$tmp/unreadable.txt"
+    rc=0
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: collection-stage error must exit 3 (got $rc), never CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: errored scan must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
+    grep -Fq 'error: secrets-audit:' "$out" || { echo "self-test FAIL: errored scan must print a diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 12) fail-closed tree collection: with an unreadable index
+    #     `git ls-files` ERRORS (exit 128) and its empty list is
+    #     indistinguishable from "no tracked files" - the working tree is
+    #     then never scanned while the gate still prints CLEAN (the
+    #     untracked secret below is invisible to every other stage, so
+    #     any verdict here would be a false CLEAN). The stage must abort
+    #     with exit 3 and a ls-files diagnostic instead.
+    #     (Assumes a non-root runner, as in step 11.)
+    tmp3="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp3" init -q
+    git -C "$tmp3" config user.email selftest@example.invalid
+    git -C "$tmp3" config user.name "secrets-audit self-test"
+    printf 'api_key: %s\n' "$fake" > "$tmp3/never-scanned.yml"
+    git -C "$tmp3" commit -q --allow-empty -m "seed"
+    chmod 000 "$tmp3/.git/index"
+    rc=0
+    ( cd "$tmp3" && "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    rm -rf "$tmp3"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: broken-index repo must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    grep -Fq 'error: secrets-audit: git ls-files failed' "$out" || { echo "self-test FAIL: expected a git ls-files diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: tree-collection error must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
 
     rm -rf "$tmp"
     echo "secrets-audit self-test: OK"
