@@ -1,0 +1,777 @@
+#!/usr/bin/env bash
+# secrets-audit.sh - reproducible secrets gate for provider-bridge (M8).
+#
+# Proves that no real operator credential (API key, access/bearer token,
+# password, private key) is reachable from this repository: working tree,
+# every commit reachable from any ref (history, tags, refs/pull/*), every
+# commit message, and every tag message (annotated tags are public on the
+# release page; a lightweight tag's %(contents) is its commit message,
+# which is also covered here, advisory-only).
+#
+# Modes:
+#   (default)    report all findings: DIRTY (high-confidence), REVIEW
+#                (generic credential assignment - manual look), INFO
+#                (whitelisted fixture or placeholder-shaped value; never fails)
+#   --gate       strict mode: suppress INFO lines; exit 1 only on DIRTY
+#   --self-test  build a throwaway git repo and verify detection end-to-end
+#   -h, --help   print this header
+#
+# Exit codes: 0 = clean / self-test OK; 1 = DIRTY finding(s); 2 = usage error;
+#             3 = internal error (key extraction or failed scan stage).
+#
+# Constraints: macOS (BSD grep) and Linux safe; no grep -P. Never prints a
+# full secret value (matches masked to first/last 4 chars). No network
+# access; GitHub-side checks (gh secret list, gh variable list) are manual.
+#
+# Performance: a full-history scan yields tens of thousands of candidate
+# lines (one hit per commit per surviving line), so classification must be
+# O(unique findings), never O(hits). Two mechanisms keep it that way:
+#   1. Parsing uses fixed-offset substrings and colon-splitting ONLY -
+#      bash 3.2 glob patterns containing '|' (or an interior '*') cost
+#      ~1ms per expansion, which is pathological at 40k lines.
+#   2. Before classification, every hit is deduplicated by an exact
+#      (kind, path, content) key built by a single sed pass and tracked
+#      in a mktemp directory: a line that recurs across N commits is
+#      emitted once, not N times, and the per-line classifier only runs
+#      on unique findings. Classification is a pure function of the
+#      content, so two hits with the same content can never be classified
+#      differently - dedupe never changes a verdict, only duplicate
+#      reporting. Keys longer than 200 bytes skip dedupe (filename limit).
+export LC_ALL=C
+set -euo pipefail
+
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+GATE=0 SELF_TEST=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --gate) GATE=1; shift ;;
+        --self-test) SELF_TEST=1; shift ;;
+        -h|--help) awk 'NR==1{next} !/^#/{exit 0} {print}' "$0"; exit 0 ;;
+        *) echo "unknown flag: $1 (usage: scripts/secrets-audit.sh [--gate] [--self-test])" >&2; exit 2 ;;
+    esac
+done
+
+# High-confidence secret shapes (ERE). The sk- branch requires at least one
+# digit followed by 15+ key-class chars so hyphenated prose (e.g. "risk-based")
+# cannot trip it. Stripe sk_/rk_ underscore shapes are deliberately NOT here:
+# measured 2026-10-07 they add ~+30s wall (+40% user) to the full scan for
+# zero findings on this repo - not cheap; revisit (and whitelist Stripe's
+# public sk_test_ doc keys) if a Stripe integration ever lands. The last
+# branch is the Telegram bot-token shape (8-10 digits, colon, 35 key-class
+# chars) - the owner's known leak vector.
+RE_HARD='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]*[0-9][A-Za-z0-9_-]{15,}|tvly-[A-Za-z0-9_-]{16,}|gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|Bearer [A-Za-z0-9._~+/=-]{20,}|[0-9]{8,10}:[A-Za-z0-9_-]{35}'
+
+# Generic credential assignment (REVIEW/INFO only; NEVER fails the gate).
+# Key names beyond the obvious api_key/password family: bot_token and
+# database_url/dsn name the remaining credential classes named in the M8
+# plan; a bot_token VALUE is high-confidence and caught by RE_HARD anyway.
+# aws_secret_access_key/secret_access_key cover the AWS secret-key half
+# (only the AKIA id half is high-confidence); POSIX leftmost-longest makes
+# the longer alternative win over the inner `secret` substring. The value
+# class includes : and @ so a URL/DSN-embedded credential (scheme://
+# user:pass@host) surfaces WHOLE in the masked REVIEW line instead of
+# truncating at the first : (which masked only the scheme prefix - the
+# password never reached the eyeball pass).
+RE_INFO="(api_key|apikey|aws_secret_access_key|secret_access_key|api_token|auth_token|access_token|bot_token|database_url|dsn|secret|password|passwd)[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_./+=:@-]{8,}"
+
+# Placeholder markers: a REVIEW candidate whose matched text contains one of
+# these word-boundary markers (or a <...> / ${...} template) is downgraded to
+# INFO instead of REVIEW - it matches a known placeholder convention
+# (your-*, test-*, sk-ant-xxx, replace-with-*, config templates), not a value
+# needing an eyeball. CONSERVATIVE BY CONSTRUCTION: RE_HARD is tested FIRST
+# and is not affected by this rule, so a real secret is always DIRTY even
+# when its line also contains a placeholder word.
+RE_PLACEHOLDER='(^|[^A-Za-z0-9])(your|test|sample|example|placeholder|dummy|fake|fixture|changeme|xxx+)([^A-Za-z0-9]|$)|replace[-_ ]?with|<[^>]+>|[$][{][^}]*[}]'
+
+# Known test fixtures (exact strings, as enumerated by the 2026-10-07 audit).
+# Only WHOLE-TOKEN occurrences are stripped (see strip_whitelist): an
+# occurrence counts only when the characters around it (where present) are
+# not key-class ([A-Za-z0-9_-]), so a fixture embedded inside a longer token
+# is KEPT (a fixture-prefixed real secret still matches RE_HARD), while a
+# fixture next to a real secret on the same line is stripped and the secret
+# still fires.
+WHITELIST=(
+    'sk-ant-test-key-12345678'
+    'sk-ant-your-key-here'
+    'sk-your-key-here'
+    'sk-e2e-lifecycle-key'
+    'sk-imported-key-12345'
+    'tvly-test-key'
+    'tvly-...'
+    'fc-...'
+    'client-placeholder-token'
+    'secret-token'
+    'replace-with-your-secret-token'
+    'replace-with-real-openai-key'
+    'replace-with-real-anthropic-key'
+    'replace-with-real-api-key'
+)
+
+HARD=0 REVIEW=0 INFO=0
+
+mask() { # <string> -> masked string on stdout
+    local s="$1"
+    if [ "${#s}" -le 12 ]; then
+        printf '********'
+    else
+        printf '%s...%s' "${s:0:4}" "${s: -4}"
+    fi
+}
+
+is_keyclass() { # <char> -> 0 if the char is in [A-Za-z0-9_-], else 1
+    case "$1" in
+        [A-Za-z0-9_-]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+strip_whitelist() { # <line> -> line with whole-token fixture occurrences removed
+    # Performance fast path: if the line contains no fixture string at
+    # all, stripping is the identity and the (byte-exact) occurrence loop
+    # below can be skipped entirely; the case test is a single fast glob.
+    local line="$1" w hit
+    hit=""
+    for w in "${WHITELIST[@]}"; do
+        case "$line" in
+            *"$w"*) hit=1; break ;;
+        esac
+    done
+    [ -n "$hit" ] || { printf '%s\n' "$line"; return 0; }
+    # An occurrence of a fixture counts as a whole token only when the
+    # character before and after it (where present) is NOT key-class
+    # ([A-Za-z0-9_-]). Delimiters (space, : = " ' , < >) are not key-class,
+    # so fixtures in normal assignments and quoted values are stripped;
+    # a fixture directly abutting key-class chars (embedded in a longer
+    # token) is KEPT, so a fixture-prefixed real secret still matches
+    # RE_HARD. The char-before is taken from the already-emitted text, so
+    # the boundary is recomputed per occurrence; a doubled fixture
+    # separated by a non-key-class delimiter (e.g. FIXTURE+FIXTURE) has
+    # whole-token occurrences and is stripped - stripping a whitelisted
+    # fixture is always safe.
+    local out pre post ch_pre ch_post
+    for w in "${WHITELIST[@]}"; do
+        out=""
+        while :; do
+            pre="${line%%"$w"*}"              # text before 1st occurrence
+            if [ "$pre" = "$line" ]; then     # no (more) occurrences
+                out="$out$line"
+                break
+            fi
+            post="${line#"$pre""$w"}"         # text after 1st occurrence
+            ch_pre="${out}${pre}"; ch_pre="${ch_pre: -1}"   # char before
+            ch_post="${post:0:1}"             # char after
+            if { [ -z "$ch_pre" ] || ! is_keyclass "$ch_pre"; } && \
+               { [ -z "$ch_post" ] || ! is_keyclass "$ch_post"; }; then
+                out="$out$pre"                # whole token: drop the fixture
+            else
+                out="$out$pre$w"              # embedded: keep the fixture text
+            fi
+            line="$post"
+        done
+        line="$out"
+    done
+    printf '%s\n' "$line"
+}
+
+emit() { # <origin> <location> <content-line> - classify one hit
+    local origin="$1" loc="$2" line="$3" rest m ms
+    local rc  # shadows scan's rc; fail_loud still closes over scan's $tmp
+    rest="$(strip_whitelist "$line")"
+    # Fail-closed classification: a grep ERROR (exit >= 2) must abort with
+    # exit 3 - as a bare if-condition an error would read as "no match"
+    # and could let a real secret pass the gate as CLEAN.
+    rc=0
+    printf '%s\n' "$rest" | grep -Eiq -- "$RE_HARD" || rc="$?"
+    [ "$rc" -le 1 ] || fail_loud "RE_HARD classification failed (grep exit $rc)"
+    if [ "$rc" -eq 0 ]; then
+        HARD=$((HARD + 1))
+        # (safe `|| true`: the -q test just proved this pattern+input
+        # compile and match, so the -o re-run can only exit 0 here)
+        m="$(printf '%s\n' "$rest" | grep -Eio -- "$RE_HARD" | head -n 1 || true)"
+        printf 'DIRTY  %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
+        return 0
+    fi
+    # Every RE_INFO candidate on the line is classified and reported, not
+    # just the first: a line like "secret: <placeholder> password: <real>"
+    # must surface the real value too. The candidates are extracted once
+    # into a variable so the loop below runs in this shell (counters).
+    if [ "$rest" = "$line" ]; then
+        # Nothing was stripped, so the candidates come from the line
+        # itself and the extraction doubles as the line-match test
+        # (one grep per line, same as before).
+        rc=0
+        ms="$(printf '%s\n' "$line" | grep -Eio -- "$RE_INFO" || rc="$?")"
+        [ "$rc" -le 1 ] || fail_loud "RE_INFO classification failed (grep exit $rc)"
+    else
+        rc=0
+        printf '%s\n' "$line" | grep -Eiq -- "$RE_INFO" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "RE_INFO classification failed (grep exit $rc)"
+        if [ "$rc" -eq 0 ]; then
+            rc=0
+            printf '%s\n' "$rest" | grep -Eiq -- "$RE_INFO" || rc="$?"
+            [ "$rc" -le 1 ] || fail_loud "RE_INFO classification failed (grep exit $rc)"
+            if [ "$rc" -eq 0 ]; then
+                # A fixture was stripped but a real-looking candidate remains:
+                # classify the survivors only (the fixture was whitelisted).
+                # (safe `|| true`: the -q test just matched this exact
+                # pattern+input, so the -o re-run can only exit 0 here)
+                ms="$(printf '%s\n' "$rest" | grep -Eio -- "$RE_INFO" || true)"
+            else
+                INFO=$((INFO + 1))
+                if [ "$GATE" -eq 0 ]; then
+                    printf 'INFO   %-10s %s  (whitelisted fixture; not a gate failure)\n' "$origin" "$loc"
+                fi
+                return 0
+            fi
+        else
+            return 0
+        fi
+    fi
+    while IFS= read -r m; do
+        [ -n "$m" ] || continue
+        rc=0
+        printf '%s\n' "$m" | grep -Eiq -- "$RE_PLACEHOLDER" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "placeholder classification failed (grep exit $rc)"
+        if [ "$rc" -eq 0 ]; then
+            INFO=$((INFO + 1))
+            if [ "$GATE" -eq 0 ]; then
+                printf 'INFO   %-10s %s  (placeholder-shaped value; not a gate failure)\n' "$origin" "$loc"
+            fi
+        else
+            REVIEW=$((REVIEW + 1))
+            printf 'REVIEW %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
+        fi
+    done <<< "$ms"
+    return 0
+}
+
+# Dedupe-key builder: one sed -n pass over the raw hits file prints TWO
+# lines per hit - a dedupe KEY line, then the untouched raw hit line -
+# which the bash loop reads as a pair. KEY is kind + an exact, injective,
+# filename-safe encoding of the finding identity (TREE/HIST: path:content,
+# MSG: content): the volatile fields (commit sha, line number) are dropped
+# with the same left-to-right colon parsing the bash classifier uses, then
+# % -> %25 is escaped FIRST and / -> %2F second (URL-style, prefix-free:
+# no two different findings can encode to the same key). A hit recurring
+# in N commits therefore maps to ONE key.
+KEYPROG='
+/^TREE\|/{h
+s/^TREE\|([^:]*):[0-9]*:(.*)$/\1:\2/
+s/%/%25/g
+s;/;%2F;g
+s/^/T/
+p
+g
+p
+}
+/^HIST\|/{h
+s/^HIST\|[0-9a-f]{40}://
+s/^([^:]*):[0-9]*:(.*)$/\1:\2/
+s/%/%25/g
+s;/;%2F;g
+s/^/H/
+p
+g
+p
+}
+/^MSG\|/{h
+s/^MSG\|[0-9a-f]{40}:[0-9]*://
+s/%/%25/g
+s;/;%2F;g
+s/^/M/
+p
+g
+p
+}
+/^TAG\|/{h
+s/^TAG\|([^:]*):[0-9]*://
+s/%/%25/g
+s;/;%2F;g
+s/^/G/
+p
+g
+p
+}
+'
+
+scan() { # scans the repository at $PWD
+    local tmp seen hits keys f commit r path lineno content raw kind body line key rc revs tag tag_esc files batch nb
+    tmp="$(mktemp -d)"
+    seen="$(mktemp -d)"
+    hits="$tmp/hits"
+    keys="$tmp/keys"
+    revs="$tmp/revs"
+    files="$tmp/files"
+    body="$tmp/body"
+    raw="$tmp/raw"
+    : > "$hits"
+
+    # A collection stage that ERRORS must abort loudly (exit 3) and never
+    # print CLEAN: `|| true` cannot tell exit 1 = "no match" (normal) from
+    # exit >= 2 = the stage itself failed (unreadable file, corrupt object,
+    # broken pipe), so swallowing it would turn a broken scan into a false
+    # CLEAN. Likewise a git rev-list ERROR is not the same thing as an
+    # empty repo: the rev list is written to a file and the history/
+    # message stage runs only on an explicit success check.
+    fail_loud() { # <message>
+        rm -rf "$tmp" "$seen"
+        echo "error: secrets-audit: $1" >&2
+        exit 3
+    }
+
+    echo "scan: working tree" >&2
+    # The file list is collected into a file with an explicit status check:
+    # through a process substitution a `git ls-files` ERROR (unreadable
+    # index, not a repo anymore) looks exactly like "no tracked files" -
+    # the tree stage would silently contribute nothing while the gate
+    # still prints CLEAN. Exit 1 = no match stays allowed.
+    rc=0
+    git ls-files -z --cached --others --exclude-standard > "$files" || rc="$?"
+    [ "$rc" -le 1 ] || fail_loud "git ls-files failed (exit $rc)"
+    # NOTE (accepted residual, documented by design): `grep -I` skips
+    # binary blobs, so a credential inside a committed binary is not
+    # scanned here; release assets are separately covered by the M2
+    # `strings` pass over the built archives and binaries. Stripe
+    # sk_live_/rk_ underscore shapes also stay out of RE_HARD (see the
+    # RE_HARD comment: measured +30s for zero findings, no Stripe
+    # integration) - a Stripe key committed today is invisible to this
+    # gate; revisit if a Stripe integration lands.
+    while IFS= read -r -d '' f; do
+        [ -f "$f" ] || continue
+        rc=0
+        grep -H -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$f" > "$raw" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "working-tree scan failed for $f (grep exit $rc)"
+        # The write side is checked SEPARATELY from grep: in the previous
+        # `grep | sed >> $hits` pipeline `set -o pipefail` folded both
+        # commands' statuses into one rc, and BSD sed exits 1 when it
+        # cannot write $hits (e.g. disk full) - indistinguishable from
+        # grep's legitimate "no match" exit 1 - so the rc<=1 check
+        # ACCEPTED the failure and silently dropped the just-matched
+        # lines while the gate still printed CLEAN. grep's exit 1 ("no
+        # match") stays allowed here; ANY sed error is fatal.
+        rc=0
+        sed 's/^/TREE|/' "$raw" >> "$hits" || rc="$?"
+        [ "$rc" -eq 0 ] || fail_loud "working-tree scan write failed for $f (sed exit $rc)"
+    done < "$files"
+
+    # Annotated tag messages are public (release page) and must go through
+    # the same classification; a lightweight tag's %(contents) is its
+    # commit message (already covered by the commit-message stage below,
+    # advisory-only). The sed delimiter is ~ because ~ is forbidden in
+    # ref names, so the tag name can never collide with it; & is escaped
+    # (it is legal in ref names and special in sed replacements).
+    echo "scan: tag messages" >&2
+    rc=0
+    git for-each-ref --format='%(refname)' refs/tags > "$revs.tags" || rc="$?"
+    [ "$rc" -eq 0 ] || fail_loud "git for-each-ref refs/tags failed (exit $rc)"
+    while IFS= read -r tag; do
+        tag_esc="${tag//&/\\&}"
+        # Fail-closed read: the tag message is read into a temp file and
+        # the git exit status checked BEFORE grepping. In the old 3-stage
+        # git|grep|sed pipeline, `set -o pipefail` reports the RIGHTMOST
+        # non-zero exit, so a git ERROR (e.g. 128: corrupt object, or the
+        # ref mutated between the list and the read) was masked by the
+        # grep's "no match" exit 1 - the `rc <= 1` check read a real error
+        # as "no match" and a repo with unreadable tag messages printed
+        # CLEAN. The grep and sed halves below are likewise checked
+        # SEPARATELY: pipefail would fold a sed write ERROR (BSD sed exits
+        # 1 when $hits is unwritable) into the same rc as grep's "no
+        # match" exit 1, silently dropping just-matched lines.
+        rc=0
+        git for-each-ref --format='%(contents)' "$tag" < /dev/null > "$body" || rc="$?"
+        [ "$rc" -eq 0 ] || fail_loud "tag-message read failed for $tag (git for-each-ref exit $rc)"
+        rc=0
+        grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" > "$raw" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "tag-message scan failed for $tag (grep exit $rc)"
+        rc=0
+        sed "s~^~TAG|$tag_esc:~" "$raw" >> "$hits" || rc="$?"
+        [ "$rc" -eq 0 ] || fail_loud "tag-message scan write failed for $tag (sed exit $rc)"
+    done < "$revs.tags"
+
+    rc=0
+    git rev-list --all > "$revs" || rc="$?"
+    [ "$rc" -eq 0 ] || fail_loud "git rev-list --all failed (exit $rc)"
+    if [ -s "$revs" ]; then
+        echo "scan: full history ($(wc -l < "$revs" | tr -d ' ') commits)" >&2
+        # The revs are fed to git grep in bounded batches (~500 SHAs,
+        # ~21 KB of argv) instead of one unquoted `$(cat "$revs")`
+        # expansion: macOS ARG_MAX (~256 KB) made the single-call form
+        # fail closed (exit 3) once history reached ~6k commits. Per
+        # batch, git grep's exit 1 ("no match") stays allowed and the
+        # write side is fail-closed exactly like the tree stage above
+        # (grep and sed statuses are checked separately: pipefail folds
+        # a sed write ERROR into the same rc as a "no match", silently
+        # dropping just-matched lines while still printing CLEAN).
+        hist_scan() { # <space-separated rev batch>
+            local rc
+            rc=0
+            git grep -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" $1 -- > "$raw" || rc="$?"
+            [ "$rc" -le 1 ] || fail_loud "history scan failed (git grep exit $rc)"
+            rc=0
+            sed 's/^/HIST|/' "$raw" >> "$hits" || rc="$?"
+            [ "$rc" -eq 0 ] || fail_loud "history scan write failed (sed exit $rc)"
+        }
+        batch="" nb=0
+        while IFS= read -r commit; do
+            batch="$batch $commit"
+            nb=$((nb + 1))
+            if [ "$nb" -ge 500 ]; then
+                hist_scan "$batch"
+                batch=""; nb=0
+            fi
+        done < "$revs"
+        if [ -n "$batch" ]; then
+            hist_scan "$batch"
+        fi
+        echo "scan: commit messages" >&2
+        while IFS= read -r commit; do
+            # Fail-closed read, same as the tag stage above: the message is
+            # read into a temp file with an explicit git exit check BEFORE
+            # grepping, so a `git log` ERROR (unreadable commit) can never
+            # be masked by the grep's "no match" exit 1 under pipefail.
+            rc=0
+            git log -1 --format='%B' "$commit" < /dev/null > "$body" || rc="$?"
+            [ "$rc" -eq 0 ] || fail_loud "commit-message read failed for $commit (git log exit $rc)"
+            rc=0
+            grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" > "$raw" || rc="$?"
+            [ "$rc" -le 1 ] || fail_loud "commit-message scan failed for $commit (grep exit $rc)"
+            rc=0
+            sed "s/^/MSG|$commit:/" "$raw" >> "$hits" || rc="$?"
+            [ "$rc" -eq 0 ] || fail_loud "commit-message scan write failed for $commit (sed exit $rc)"
+        done < "$revs"
+    fi
+
+    # One streaming pass builds the dedupe keys (C speed); the bash loop
+    # reads (key, raw) pairs and classifies only the first occurrence of
+    # each (kind, path, content) - the [ -e ] test is a shell builtin, so
+    # deduplication costs no subprocesses.
+    sed -n -E "$KEYPROG" "$hits" > "$keys" || {
+        rm -rf "$tmp" "$seen"
+        echo "error: secrets-audit: key extraction failed" >&2
+        exit 3
+    }
+    while IFS= read -r key && IFS= read -r raw; do
+        [ -n "$raw" ] || continue
+        if [ "${#key}" -le 200 ]; then
+            if [ -e "$seen/$key" ]; then
+                continue
+            fi
+            : > "$seen/$key"
+        fi
+        kind="${raw:0:3}"
+        case "$kind" in
+            TRE)
+                body="${raw:5}"
+                path="${body%%:*}"; r="${body#*:}"
+                lineno="${r%%:*}"; content="${r#*:}"
+                emit tree "${path}:${lineno}" "$content"
+                ;;
+            HIS)
+                body="${raw:5}"
+                commit="${body%%:*}"; r="${body#*:}"
+                path="${r%%:*}"; r="${r#*:}"
+                lineno="${r%%:*}"; content="${r#*:}"
+                emit history "${commit:0:8}:${path}:${lineno}" "$content"
+                ;;
+            MSG)
+                body="${raw:4}"
+                commit="${body%%:*}"; r="${body#*:}"
+                lineno="${r%%:*}"; content="${r#*:}"
+                emit commit-msg "${commit:0:8}:${lineno}" "$content"
+                ;;
+            TAG)
+                body="${raw:4}"
+                tag="${body%%:*}"; r="${body#*:}"
+                lineno="${r%%:*}"; content="${r#*:}"
+                emit tag "${tag#refs/tags/}:${lineno}" "$content"
+                ;;
+        esac
+    done < "$keys"
+
+    rm -rf "$tmp" "$seen"
+    if [ "$HARD" -gt 0 ]; then
+        echo "SECRETS AUDIT: DIRTY - $HARD high-confidence finding(s), $REVIEW review item(s), $INFO whitelisted fixture/placeholder hit(s)"
+        return 1
+    fi
+    echo "SECRETS AUDIT: CLEAN - 0 high-confidence findings ($REVIEW review item(s), $INFO whitelisted fixture/placeholder hit(s))"
+    return 0
+}
+
+self_test() {
+    local tmp tmp2 tmp3 tmp4 tmp5 tmp6 realgit realsed fake out tg awsv rc
+    tmp="$(mktemp -d)" || return 2
+    fake="sk-ant-self""test-0123456789abcdefghij"
+    out="$tmp/out"
+    git -C "$tmp" init -q
+    git -C "$tmp" config user.email selftest@example.invalid
+    git -C "$tmp" config user.name "secrets-audit self-test"
+
+    printf 'api_key: sk-ant-test-key-12345678\napi_key: your-api-key-here\n' > "$tmp/fixture.yml"
+    git -C "$tmp" add -A
+    git -C "$tmp" commit -qm "fixture only"
+
+    # 1) fixture-only repo: --gate must pass, silently (INFO suppressed).
+    if ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1; then :; else
+        echo "self-test FAIL: fixture-only repo must pass the gate" >&2
+        sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1
+    fi
+    grep -q '^SECRETS AUDIT: CLEAN' "$out" || { echo "self-test FAIL: expected CLEAN verdict" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q 'INFO' "$out"; then echo "self-test FAIL: --gate must suppress INFO lines" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 2) default mode must report the whitelisted fixture AND the
+    #    placeholder-shaped assignment as INFO (never REVIEW), exit 0.
+    if ( cd "$tmp" && "$SELF" ) > "$out" 2>&1; then :; else
+        echo "self-test FAIL: default mode must exit 0 on fixtures" >&2; rm -rf "$tmp"; return 1
+    fi
+    grep -Fq '(whitelisted fixture; not a gate failure)' "$out" || { echo "self-test FAIL: expected INFO line for whitelisted fixture" >&2; rm -rf "$tmp"; return 1; }
+    grep -Fq '(placeholder-shaped value; not a gate failure)' "$out" || { echo "self-test FAIL: expected INFO line for placeholder-shaped assignment" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q '^REVIEW' "$out"; then echo "self-test FAIL: placeholder-shaped assignment must be INFO, not REVIEW" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 3) real-shaped secret in history only (file deleted in a follow-up
+    #    commit). Line 1 carries a whitelisted fixture NEXT TO the secret on
+    #    the same line: stripping the fixture must still leave a DIRTY match.
+    printf 'creds: sk-ant-test-key-12345678 next-to %s\nkey: %s\n' "$fake" "$fake" > "$tmp/leaked.yml"
+    git -C "$tmp" add -A
+    git -C "$tmp" commit -qm "oops: add leaked config"
+    git -C "$tmp" rm -q leaked.yml
+    git -C "$tmp" commit -qm "remove leaked config"
+    if ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1; then
+        echo "self-test FAIL: history-only secret must fail the gate" >&2; rm -rf "$tmp"; return 1
+    fi
+    [ "$(grep -Fc 'DIRTY  history' "$out")" = "2" ] || { echo "self-test FAIL: expected exactly 2 history DIRTY lines (same-line fixture+secret must still fire)" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -Fq -- "$fake" "$out"; then echo "self-test FAIL: full secret value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
+    grep -Fq 'sk-a...ghij' "$out" || { echo "self-test FAIL: expected masked match sk-a...ghij" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 4) secret in a commit message.
+    git -C "$tmp" commit -q --allow-empty -m "debug: try token $fake"
+    if ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1; then
+        echo "self-test FAIL: commit-message secret must fail the gate" >&2; rm -rf "$tmp"; return 1
+    fi
+    grep -Fq 'DIRTY  commit-msg' "$out" || { echo "self-test FAIL: expected commit-msg DIRTY" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 5) untracked working-tree file carrying three shapes that must ALL
+    #    be DIRTY: a Bearer secret; a real secret on a placeholder-LOOKING
+    #    line (RE_HARD must win over the placeholder->INFO rule); and a
+    #    real secret whose prefix is a whitelisted fixture (whole-token
+    #    stripping must NOT strip the embedded fixture occurrence).
+    embedded="sk-ant-test-key-12345678""9012345678901234"
+    printf 'Authorization: Bearer %s\npassword: your-key-%s\napi_key: %s\n' \
+        "$fake" "$fake" "$embedded" > "$tmp/scratch.txt"
+    if ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1; then
+        echo "self-test FAIL: untracked tree secrets must fail the gate" >&2; rm -rf "$tmp"; return 1
+    fi
+    [ "$(grep -Fc 'DIRTY  tree' "$out")" = "3" ] || { echo "self-test FAIL: expected exactly 3 tree DIRTY lines (Bearer; placeholder-shaped real secret; fixture-prefixed real secret)" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -Fq -- "$fake" "$out"; then echo "self-test FAIL: full secret value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 6) duplicate suppression: fixture.yml is present in the tree of every
+    #    commit so far (4 commits), so each of its 2 lines yields 4 history
+    #    hits; identical (kind, path, content) findings must be reported
+    #    ONCE, not once per commit.
+    # (|| true is safe: the expected INFO lines are asserted next, so an
+    #  errored scan cannot pass the step - it just fails it differently)
+    ( cd "$tmp" && "$SELF" ) > "$out" 2>&1 || true
+    [ "$(grep -Fc 'INFO   history' "$out")" = "2" ] || { echo "self-test FAIL: expected exactly 2 deduplicated INFO history lines (got $(grep -Fc 'INFO   history' "$out"))" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 7) regression guard for the rev-list handling rework: a repo with
+    #    zero commits (git rev-list --all succeeds with EMPTY output) must
+    #    still scan clean - an empty rev list is not an error.
+    tmp2="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp2" init -q
+    if ( cd "$tmp2" && "$SELF" --gate ) > "$out" 2>&1; then :; else
+        echo "self-test FAIL: empty repo must pass the gate" >&2
+        sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp2"; return 1
+    fi
+    grep -q '^SECRETS AUDIT: CLEAN' "$out" || { echo "self-test FAIL: empty repo must report CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp2"; return 1; }
+    rm -rf "$tmp2"
+
+    # 8) coverage: the Telegram bot-token shape (owner's known leak
+    #    vector) must be DIRTY, and a database_url assignment must be
+    #    visible (REVIEW), not silently skipped.
+    # The token literal is split ("…:AA""Hf…") so the fixture inside THIS
+    # script cannot match RE_HARD when the gate scans its own source - the
+    # same idiom as the fake sk- token above; ditto the database_url value.
+    tg="123456789:AA""HfLa9xQm2Zb4NcV7pD3wE8rT5uY1oK6sX"
+    printf 'bot_token: %s\nDATABASE_URL: post''gres://app:realpass@db.internal/app\n' "$tg" > "$tmp/bots.yml"
+    # (|| true is safe: the expected DIRTY/REVIEW lines are asserted next,
+    #  so an errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
+    grep -Fq '1234...K6sX' "$out" || { echo "self-test FAIL: Telegram bot-token shape must be DIRTY" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    # (the widened value class means the WHOLE URL is the masked match:
+    # DATA.../app, not the old truncated DATA...gres)
+    grep -Fq 'DATA.../app' "$out" || { echo "self-test FAIL: database_url assignment must be reported with the URL-shaped value whole (REVIEW, match=DATA.../app)" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -Fq -- "$tg" "$out"; then echo "self-test FAIL: full token value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 9) every RE_INFO candidate on a line must be reported, not just the
+    #    first: the second assignment below must produce a REVIEW line.
+    # ("pass""word" split so this fixture cannot REVIEW-flag the script
+    # itself once every candidate on a line is reported.)
+    printf 'secret: test-12345678 pass''word: prodp4ssword9\n' > "$tmp/multi.txt"
+    # (|| true is safe: the expected REVIEW line is asserted next, so an
+    #  errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" ) > "$out" 2>&1 || true
+    grep -Fq 'pass...ord9' "$out" || { echo "self-test FAIL: second candidate on a multi-assignment line must be reported" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 10) annotated tag messages are public (release page) and must be
+    #     scanned: a token in a tag message must be DIRTY.
+    git -C "$tmp" tag -a -m "release: token $fake" v9.9.9
+    # (|| true is safe: the expected DIRTY tag line is asserted next, so an
+    #  errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
+    grep -Fq 'DIRTY  tag' "$out" || { echo "self-test FAIL: secret in an annotated tag message must be DIRTY" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+
+    # 11) fail-closed collection: a stage that ERRORS (here: an unreadable
+    #     tracked file makes the tree-scan grep exit 2) must abort with a
+    #     non-zero exit and never print CLEAN. (Assumes a non-root runner:
+    #     root can read chmod-000 files.)
+    printf 'plain\n' > "$tmp/unreadable.txt"
+    git -C "$tmp" add -A
+    git -C "$tmp" commit -qm "add file that becomes unreadable"
+    chmod 000 "$tmp/unreadable.txt"
+    rc=0
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: collection-stage error must exit 3 (got $rc), never CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: errored scan must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
+    grep -Fq 'error: secrets-audit:' "$out" || { echo "self-test FAIL: errored scan must print a diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    chmod 644 "$tmp/unreadable.txt"  # restore readability: later steps rescan $tmp
+
+    # 12) fail-closed tree collection: with an unreadable index
+    #     `git ls-files` ERRORS (exit 128) and its empty list is
+    #     indistinguishable from "no tracked files" - the working tree is
+    #     then never scanned while the gate still prints CLEAN (the
+    #     untracked secret below is invisible to every other stage, so
+    #     any verdict here would be a false CLEAN). The stage must abort
+    #     with exit 3 and a ls-files diagnostic instead.
+    #     (Assumes a non-root runner, as in step 11.)
+    tmp3="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp3" init -q
+    git -C "$tmp3" config user.email selftest@example.invalid
+    git -C "$tmp3" config user.name "secrets-audit self-test"
+    printf 'api_key: %s\n' "$fake" > "$tmp3/never-scanned.yml"
+    git -C "$tmp3" commit -q --allow-empty -m "seed"
+    chmod 000 "$tmp3/.git/index"
+    rc=0
+    ( cd "$tmp3" && "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    rm -rf "$tmp3"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: broken-index repo must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    grep -Fq 'error: secrets-audit: git ls-files failed' "$out" || { echo "self-test FAIL: expected a git ls-files diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: tree-collection error must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 13) fail-closed 3-stage pipelines, part 1 (commit messages): under
+    #     `set -o pipefail` a pipeline's status is the RIGHTMOST non-zero
+    #     exit, so an upstream git ERROR would be masked by the middle
+    #     grep's "no match" exit 1 and the old `rc <= 1` check read a real
+    #     error as "no match" - a repo whose commit messages were UNREADABLE
+    #     printed CLEAN. A PATH shim forces `git log -1 --format=%B` to
+    #     exit 128 on an otherwise clean repo: the stage must abort with
+    #     exit 3 and a git log diagnostic, never a verdict.
+    realgit="$(command -v git)" || { rm -rf "$tmp"; return 2; }
+    tmp4="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp4" init -q
+    git -C "$tmp4" config user.email selftest@example.invalid
+    git -C "$tmp4" config user.name "secrets-audit self-test"
+    printf 'plain\n' > "$tmp4/plain.txt"
+    git -C "$tmp4" add -A
+    git -C "$tmp4" commit -qm "nothing to see here"
+    mkdir "$tmp4/shim"
+    cat > "$tmp4/shim/git" <<'SHIM'
+#!/bin/sh
+if [ "$1" = "log" ] && [ "$2" = "-1" ]; then exit 128; fi
+exec "$REAL_GIT" "$@"
+SHIM
+    chmod +x "$tmp4/shim/git"
+    rc=0
+    ( cd "$tmp4" && PATH="$tmp4/shim:$PATH" REAL_GIT="$realgit" "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: unreadable commit messages must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp4"; return 1; }
+    grep -Fq 'error: secrets-audit: commit-message read failed' "$out" || { echo "self-test FAIL: expected a git log read diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp4"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: unreadable commit messages must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp4"; return 1; fi
+    rm -rf "$tmp4"
+
+    # 14) fail-closed 3-stage pipelines, part 2 (tag messages): the same
+    #     pipefail masking applies to the tag pipeline. A PATH shim forces
+    #     the per-tag `git for-each-ref --format=%(contents)` call to exit
+    #     128 (the tag-LIST call uses %(refname) and still succeeds) on an
+    #     otherwise clean repo with one annotated tag: the stage must
+    #     abort with exit 3 and a for-each-ref diagnostic, never a verdict.
+    tmp5="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp5" init -q
+    git -C "$tmp5" config user.email selftest@example.invalid
+    git -C "$tmp5" config user.name "secrets-audit self-test"
+    printf 'plain\n' > "$tmp5/plain.txt"
+    git -C "$tmp5" add -A
+    git -C "$tmp5" commit -qm "nothing to see here"
+    git -C "$tmp5" tag -a -m "release notes: nothing sensitive" v0.0.1
+    mkdir "$tmp5/shim"
+    cat > "$tmp5/shim/git" <<'SHIM'
+#!/bin/sh
+if [ "$1" = "for-each-ref" ] && [ "$2" = "--format=%(contents)" ]; then exit 128; fi
+exec "$REAL_GIT" "$@"
+SHIM
+    chmod +x "$tmp5/shim/git"
+    rc=0
+    ( cd "$tmp5" && PATH="$tmp5/shim:$PATH" REAL_GIT="$realgit" "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: unreadable tag message must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp5"; return 1; }
+    grep -Fq 'error: secrets-audit: tag-message read failed' "$out" || { echo "self-test FAIL: expected a git for-each-ref read diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp5"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: unreadable tag message must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp5"; return 1; fi
+    rm -rf "$tmp5"
+
+    # 15) coverage: the AWS secret ACCESS key half was invisible (only the
+    #     AKIA id half was high-confidence): an aws_secret_access_key
+    #     assignment must be reported (REVIEW), never silently skipped.
+    #     (The literal below is split so this script's own source cannot
+    #     trip the gate. Stripe sk_/rk_ shapes stay out of RE_HARD - not
+    #     cheap, see the RE_HARD comment - so no pin exists for them.)
+    awsv="wJalrXUtnFEMI""K7ENGbPxRfiCYExAmPlKeY"
+    printf 'aws_secret_access_key: %s\n' "$awsv" > "$tmp/aws.yml"
+    # (|| true is safe: the expected REVIEW line is asserted next, so an
+    #  errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
+    grep -Eq '^REVIEW.*aws_...lKeY' "$out" || { echo "self-test FAIL: aws_secret_access_key assignment must be reported (REVIEW)" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -Fq -- "$awsv" "$out"; then echo "self-test FAIL: full secret value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 16) fail-closed WRITE side of a collection stage: in the old
+    #     `grep | sed >> $hits` pipeline, BSD sed exits 1 when the write
+    #     to $hits fails (disk full), and pipefail folded it into the same
+    #     rc as grep's legitimate "no match" exit 1 - the rc<=1 check
+    #     ACCEPTED the failure and silently dropped the just-MATCHED
+    #     lines while the gate still printed CLEAN. A PATH shim forces
+    #     the tree-stage sed to exit 1 on a repo whose ONLY finding is a
+    #     working-tree credential assignment that grep DID match: the
+    #     stage must abort with exit 3 and a write diagnostic, never a
+    #     verdict. (The fixture below is split `pass""word` so this
+    #     script's own source cannot trip RE_INFO once the gate scans
+    #     itself.)
+    realsed="$(command -v sed)" || { rm -rf "$tmp"; return 2; }
+    tmp6="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp6" init -q
+    printf 'pass""word: realp4ssword9\n' > "$tmp6/app.yml"
+    mkdir "$tmp6/shim"
+    cat > "$tmp6/shim/sed" <<'SHIM'
+#!/bin/sh
+if [ "$1" = 's/^/TREE|/' ]; then exit 1; fi
+exec "$REAL_SED" "$@"
+SHIM
+    chmod +x "$tmp6/shim/sed"
+    rc=0
+    ( cd "$tmp6" && PATH="$tmp6/shim:$PATH" REAL_SED="$realsed" "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    rm -rf "$tmp6"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: tree-stage write failure must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    grep -Fq 'error: secrets-audit: working-tree scan write failed' "$out" || { echo "self-test FAIL: expected a working-tree write diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q 'SECRETS AUDIT:' "$out"; then echo "self-test FAIL: write-failed scan must not print a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
+
+    rm -rf "$tmp"
+    echo "secrets-audit self-test: OK"
+    return 0
+}
+
+# ---- main ----
+if [ "$SELF_TEST" -eq 1 ]; then
+    self_test
+    exit $?
+fi
+
+TOP="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "error: not a git repository" >&2; exit 2; }
+cd "$TOP"
+if scan; then
+    exit 0
+fi
+exit 1

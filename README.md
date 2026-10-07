@@ -101,6 +101,17 @@ The full documentation index is in [docs/README.md](docs/README.md):
 - [Testing](docs/TESTING.md) and [Development](docs/DEVELOPMENT.md)
 - [Deployment](docs/DEPLOYMENT.md) — binary, systemd, Docker, Cloudflare
 
+## Security
+
+Run the secrets gate before publishing or after touching credential
+handling:
+
+    scripts/secrets-audit.sh --gate
+
+It scans the working tree, every commit reachable from any ref, and all
+commit messages for high-confidence secret shapes, masks any match, and
+exits non-zero when one is found. See `scripts/secrets-audit.sh --help`.
+
 ## License
 
 [GPL v3](LICENSE)
