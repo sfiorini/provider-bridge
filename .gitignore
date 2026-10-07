@@ -78,3 +78,6 @@ omx_wiki/
 
 # sf-flow-plan artifacts
 ai_plan/
+
+# Operator-private deployment runbooks (kept local-only, not shipped)
+deploy/mini/
