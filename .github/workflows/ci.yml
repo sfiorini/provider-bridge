@@ -115,10 +115,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      - name: Verify tag matches VERSION file
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [ "${TAG}" != "v${VERSION}" ]; then
+            echo "tag ${TAG} does not match VERSION ${VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v8
@@ -126,14 +143,39 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Create draft release and upload assets
+      - name: Build and push Docker image to GHCR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker build --build-arg VERSION="${VERSION}" \
+            -t "ghcr.io/sfiorini/provider-bridge:${VERSION}" \
+            -t "ghcr.io/sfiorini/provider-bridge:latest" .
+          docker push "ghcr.io/sfiorini/provider-bridge:${VERSION}"
+          docker push "ghcr.io/sfiorini/provider-bridge:latest"
+
+      - name: Extract release notes from CHANGELOG
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          awk -v ver="## [${VERSION}]" '
+            index($0, ver) == 1 { in_section = 1; next }
+            in_section && /^## \[/ { exit }
+            in_section { print }
+          ' CHANGELOG.md > release-notes.md
+          [ -s release-notes.md ] || echo "Release ${TAG}" > release-notes.md
+
+      - name: Create GitHub release and upload assets
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "${TAG}" --draft --title "${TAG}" --notes "Release notes TBD" --verify-tag
-
-          find dist -type f -name '*.tar.gz' -o -name '*.zip' | while read asset; do
+          gh release create "${TAG}" --title "${TAG}" \
+            --notes-file release-notes.md --verify-tag
+          find dist -type f \( -name '*.tar.gz' -o -name '*.zip' \) | while read -r asset; do
             echo "Uploading: ${asset}"
             gh release upload "${TAG}" "${asset}" --clobber
           done
