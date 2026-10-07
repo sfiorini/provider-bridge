@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-const backendTarget = process.env.MOONBRIDGE_CONSOLE_BACKEND ?? "http://127.0.0.1:38440";
+const backendTarget = process.env.PROVIDER_BRIDGE_CONSOLE_BACKEND ?? "http://127.0.0.1:38440";
 
 export default defineConfig({
   base: "/console/",

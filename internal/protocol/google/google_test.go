@@ -13,8 +13,8 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/google"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/google"
 )
 
 // ============================================================================
@@ -2032,15 +2032,15 @@ func TestClient_NewRequestUserAgent(t *testing.T) {
 	client := google.NewClient(google.ClientConfig{
 		BaseURL:   srv.URL,
 		APIKey:    "test-key",
-		UserAgent: "MoonBridge-Test/1.0",
+		UserAgent: "ProviderBridge-Test/1.0",
 		Version:   "v1beta",
 		Client:    srv.Client(),
 	})
 
 	_, _ = client.GenerateContent(context.Background(), "gemini-2.0-flash", &google.GenerateContentRequest{})
 
-	if userAgent != "MoonBridge-Test/1.0" {
-		t.Errorf("User-Agent = %q, want MoonBridge-Test/1.0", userAgent)
+	if userAgent != "ProviderBridge-Test/1.0" {
+		t.Errorf("User-Agent = %q, want ProviderBridge-Test/1.0", userAgent)
 	}
 }
 

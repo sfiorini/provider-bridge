@@ -1,7 +1,7 @@
 package websearch
 
 import (
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 // ToolOptions configures web search tool generation.

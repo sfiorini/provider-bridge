@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 // ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ func newTestAdapter() *anthropic.AnthropicProviderAdapter {
 }
 
 func TestFromCoreRequest_BasicTextMessage(t *testing.T) {
-	// 测试纯文本 CoreRequest → *anthropic.MessageRequest
+	// test a plain-text CoreRequest → *anthropic.MessageRequest
 	adapter := newTestAdapter()
 
 	coreReq := &format.CoreRequest{

@@ -10,15 +10,15 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 if ($MyInvocation.InvocationName -eq ".") {
-    Write-Error "Do not dot-source this script; run it as .\scripts\start_codex_with_moonbridge.ps1 to avoid polluting your shell."
+    Write-Error "Do not dot-source this script; run it as .\scripts\start_codex_with_provider-bridge.ps1 to avoid polluting your shell."
     return
 }
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$ConfigFile = if ($env:MOONBRIDGE_CONFIG) { $env:MOONBRIDGE_CONFIG } else { Join-Path $RootDir "config.yml" }
+$ConfigFile = if ($env:PROVIDER_BRIDGE_CONFIG) { $env:PROVIDER_BRIDGE_CONFIG } else { Join-Path $RootDir "config.yml" }
 $CodexHomeDir = $CodexHome
-$ServerBin = Join-Path $RootDir ".cache\start-codex\moonbridge.exe"
-$LogFile = Join-Path $RootDir "logs\moonbridge-codex.log"
+$ServerBin = Join-Path $RootDir ".cache\start-codex\providerbridge.exe"
+$LogFile = Join-Path $RootDir "logs\providerbridge-codex.log"
 $CodexProcess = $null
 $CodexWatcherProcess = $null
 
@@ -174,7 +174,7 @@ function Test-TcpPort {
     }
 }
 
-function Stop-StaleMoonBridgeOnPort {
+function Stop-StaleProviderBridgeOnPort {
     param(
         [Parameter(Mandatory = $true)][string]$HostName,
         [Parameter(Mandatory = $true)][int]$Port
@@ -204,10 +204,10 @@ function Stop-StaleMoonBridgeOnPort {
         }
 
         if ($processPath -eq $serverBinPath) {
-            Write-Log "Stopping stale Moon Bridge process $($process.Id) on ${HostName}:$Port"
+            Write-Log "Stopping stale Provider Bridge process $($process.Id) on ${HostName}:$Port"
             Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
             $process.WaitForExit(5000) | Out-Null
-            Write-Log "Stale Moon Bridge process $($process.Id) stopped"
+            Write-Log "Stale Provider Bridge process $($process.Id) stopped"
         }
     }
 }
@@ -222,7 +222,7 @@ function Ensure-PortFree {
     if (Test-TcpPort -HostName $HostName -Port $Port) {
         Write-LogError "port already in use: $Addr"
         Write-LogError "change server.addr in config.yml, or stop the process using $Addr"
-        Write-LogError "Moon Bridge log: $LogFile"
+        Write-LogError "Provider Bridge log: $LogFile"
         exit 1
     }
 }
@@ -327,7 +327,7 @@ while (`$true) {
     }
 
     if (-not `$parent) {
-        Add-LogLine ("Moon Bridge launcher exited; stopping Codex terminal process " + `$CodexPid)
+        Add-LogLine ("Provider Bridge launcher exited; stopping Codex terminal process " + `$CodexPid)
         Stop-Tree -ProcessId `$CodexPid
         Add-LogLine ("Codex terminal process " + `$CodexPid + " stopped by watcher")
         break
@@ -373,7 +373,7 @@ Write-Host 'Workspace: $RootDir'
 Write-Host 'Mode: $Mode'
 Write-Host 'Model: $ModelAlias'
 Add-LauncherLog 'Codex terminal opened'
-Write-Host 'Waiting for Moon Bridge at ${HostName}:$Port'
+Write-Host 'Waiting for Provider Bridge at ${HostName}:$Port'
 `$deadline = (Get-Date).AddSeconds(30)
 while ((Get-Date) -lt `$deadline) {
     `$client = [System.Net.Sockets.TcpClient]::new()
@@ -426,10 +426,10 @@ if (-not $env:GOCACHE) {
     $env:GOCACHE = Join-Path $RootDir ".cache\go-build"
 }
 
-Write-Log "Building Moon Bridge"
+Write-Log "Building Provider Bridge"
 Push-Location $RootDir
 try {
-    & go build -buildvcs=false -o $ServerBin ./cmd/moonbridge 2>&1 | Tee-Object -FilePath $LogFile -Append
+    & go build -buildvcs=false -o $ServerBin ./cmd/providerbridge 2>&1 | Tee-Object -FilePath $LogFile -Append
 } finally {
     Pop-Location
 }
@@ -463,7 +463,7 @@ if ($addrResult.ExitCode -ne 0) {
 }
 $Addr = $addrResult.Stdout.Trim()
 $ParsedAddr = Parse-Addr -Addr $Addr
-Stop-StaleMoonBridgeOnPort -HostName $ParsedAddr.Host -Port $ParsedAddr.Port
+Stop-StaleProviderBridgeOnPort -HostName $ParsedAddr.Host -Port $ParsedAddr.Port
 Ensure-PortFree -Addr $Addr -HostName $ParsedAddr.Host -Port $ParsedAddr.Port
 
 $codexConfigResult = Invoke-NativeCapture -FilePath $ServerBin -Arguments @(
@@ -486,15 +486,15 @@ Write-Log "Starting Codex in a new PowerShell window"
 $CodexProcess = Start-CodexTerminal -Arguments $codexArgs -HostName $ParsedAddr.Host -Port $ParsedAddr.Port
 $CodexWatcherProcess = Start-CodexCleanupWatcher -Process $CodexProcess
 
-Write-Log "Starting Moon Bridge on $Addr in this terminal"
-Write-Log "Moon Bridge log: $LogFile"
-Write-Log "Press Ctrl+C in this terminal to stop Moon Bridge and the launched Codex terminal."
+Write-Log "Starting Provider Bridge on $Addr in this terminal"
+Write-Log "Provider Bridge log: $LogFile"
+Write-Log "Press Ctrl+C in this terminal to stop Provider Bridge and the launched Codex terminal."
 
 Push-Location $RootDir
-$MoonBridgeStatus = 0
+$ProviderBridgeStatus = 0
 try {
     & $ServerBin --config $ConfigFile
-    $MoonBridgeStatus = $LASTEXITCODE
+    $ProviderBridgeStatus = $LASTEXITCODE
 } finally {
     Stop-CodexTerminal
     if ($CodexWatcherProcess -and -not $CodexWatcherProcess.HasExited) {
@@ -502,4 +502,4 @@ try {
     }
     Pop-Location
 }
-exit $MoonBridgeStatus
+exit $ProviderBridgeStatus

@@ -1,40 +1,25 @@
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useMemo,
-  useState
-} from "react";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { type Locale, type MessageKey, messages, normalizeLocale } from "./messages";
 
-export const CONSOLE_LOCALE_STORAGE_KEY = "moonbridge.console.locale";
+export const CONSOLE_LOCALE_STORAGE_KEY = "providerbridge.console.locale";
 
 type InterpolationValue = string | number;
 
 type I18nContextValue = {
   locale: Locale;
-  setLocale: (locale: Locale) => void;
   t: (key: MessageKey, values?: Record<string, InterpolationValue>) => string;
 };
 
 const I18nContext = createContext<I18nContextValue | undefined>(undefined);
 
 export function I18nProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState(readInitialLocale);
-
-  const setLocale = useCallback((nextLocale: Locale) => {
-    setLocaleState(nextLocale);
-    safeSetStorage(CONSOLE_LOCALE_STORAGE_KEY, nextLocale);
+  const value = useMemo<I18nContextValue>(() => {
+    const locale = readInitialLocale();
+    return {
+      locale,
+      t: (key, values) => translateMessageForLocale(locale, key, values)
+    };
   }, []);
-
-  const t = useCallback(
-    (key: MessageKey, values?: Record<string, InterpolationValue>) =>
-      translateMessageForLocale(locale, key, values),
-    [locale]
-  );
-
-  const value = useMemo(() => ({ locale, setLocale, t }), [locale, setLocale, t]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
@@ -56,18 +41,13 @@ function translateMessageForLocale(
   key: MessageKey,
   values?: Record<string, InterpolationValue>
 ) {
-  return interpolate(messages[locale][key] ?? messages["zh-CN"][key], values);
+  return interpolate(messages[locale][key], values);
 }
 
 function readInitialLocale(): Locale {
-  const stored = safeGetStorage(CONSOLE_LOCALE_STORAGE_KEY);
-  if (stored === "en-US" || stored === "zh-CN") {
-    return stored;
-  }
-  if (typeof window === "undefined") {
-    return "zh-CN";
-  }
-  return normalizeLocale(window.navigator.language);
+  // The console is English-only. The storage key survives for future locales,
+  // but any persisted non-English value is ignored.
+  return normalizeLocale(safeGetStorage(CONSOLE_LOCALE_STORAGE_KEY) ?? undefined);
 }
 
 function interpolate(message: string, values?: Record<string, InterpolationValue>) {
@@ -85,13 +65,5 @@ function safeGetStorage(key: string): string | null {
     return window.localStorage?.getItem(key) ?? null;
   } catch {
     return null;
-  }
-}
-
-function safeSetStorage(key: string, value: string) {
-  try {
-    window.localStorage?.setItem(key, value);
-  } catch {
-    // Storage can be disabled in hardened browser contexts.
   }
 }

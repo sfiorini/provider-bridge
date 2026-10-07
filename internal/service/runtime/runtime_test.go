@@ -3,10 +3,10 @@ package runtime_test
 import (
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/runtime"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/runtime"
+	"providerbridge/internal/service/stats"
 )
 
 func TestNewRuntimeAndCurrent(t *testing.T) {

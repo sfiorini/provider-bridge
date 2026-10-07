@@ -1,4 +1,4 @@
-// Package format defines protocol-agnostic Core types for MoonBridge.
+// Package format defines protocol-agnostic Core types for ProviderBridge.
 //
 // These types serve as the intermediate representation between protocol-specific
 // DTOs (Anthropic, OpenAI, etc.). All Adapter implementations convert to/from

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
 )
 
 // SQLiteConfigStore implements ConfigStore backed by a SQLite database.
@@ -1016,6 +1016,12 @@ func (s *SQLiteConfigStore) ExportYAML(includeSecrets bool) ([]byte, error) {
 
 // maskSecrets masks sensitive fields in a FileConfig.
 func maskSecrets(fc *config.FileConfig) {
+	// Mask the management-API bearer token so sanitized exports
+	// (include_secrets=false) used for backups/sharing never leak it.
+	if fc.Server.AuthToken != "" {
+		fc.Server.AuthToken = maskAPIKey(fc.Server.AuthToken)
+	}
+
 	// Mask provider-level secrets.
 	for key, def := range fc.Providers {
 		def.APIKey = maskAPIKey(def.APIKey)
@@ -1051,9 +1057,10 @@ func maskSecrets(fc *config.FileConfig) {
 }
 
 // maskAPIKey masks an API key: first 4 + "****" + last 4.
-// If the key is shorter than 8 characters, replaces entirely with "******".
+// If the key is 8 characters or fewer, replaces entirely with "******" —
+// otherwise an 8-char key would be disclosed in full (4+4 chars).
 func maskAPIKey(key string) string {
-	if len(key) < 8 {
+	if len(key) <= 8 {
 		return "******"
 	}
 	return key[:4] + "****" + key[len(key)-4:]

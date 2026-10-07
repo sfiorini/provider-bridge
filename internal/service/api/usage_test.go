@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/extension/plugin"
+	"providerbridge/internal/extension/plugin"
 )
 
 func TestUsageWindow(t *testing.T) {

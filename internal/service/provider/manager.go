@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/modelref"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/config"
+	"providerbridge/internal/modelref"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 // HTTPConfig controls the HTTP connection pool for a provider.
@@ -641,6 +641,22 @@ func (pm *ProviderManager) ModelMetaFor(modelName string, providerKey string) (M
 	}
 	meta, ok := cfg.Models[modelName]
 	return meta, ok
+}
+
+// ModelSupportsImage reports whether the provider's metadata for the upstream
+// model includes the "image" input modality. Missing metadata (ok == false)
+// means NOT image-capable — the same default filterCandidatesByInput applies.
+func (pm *ProviderManager) ModelSupportsImage(providerKey, upstreamModel string) bool {
+	meta, ok := pm.ModelMetaFor(upstreamModel, providerKey)
+	if !ok {
+		return false
+	}
+	for _, m := range meta.InputModalities {
+		if m == "image" {
+			return true
+		}
+	}
+	return false
 }
 
 // ProviderDefForKey returns the full ProviderConfig for a given provider key.

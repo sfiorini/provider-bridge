@@ -1528,8 +1528,7 @@ function stringArrayValue(value: unknown): string[] {
 
 function localizedStaticLabel(label: string): LocalizedLabel {
   return {
-    "en-US": label,
-    "zh-CN": label
+    "en-US": label
   };
 }
 
@@ -2294,7 +2293,7 @@ type ReasoningLevelPreset = {
   description?: string;
 };
 
-type LocalizedLabel = Record<"en-US" | "zh-CN", string>;
+type LocalizedLabel = Record<"en-US", string>;
 
 type BooleanFieldState = {
   commitValue: (value: boolean) => void;
@@ -2782,8 +2781,7 @@ function stringListItemLabel(item: unknown) {
 
 function localizedFallback(label: string): LocalizedLabel {
   return {
-    "en-US": label,
-    "zh-CN": label
+    "en-US": label
   };
 }
 

@@ -6,15 +6,15 @@ import (
 	"log/slog"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
-	dbd1 "moonbridge/internal/extension/db/d1"
-	dbsqlite "moonbridge/internal/extension/db/sqlite"
-	"moonbridge/internal/extension/deepseek_v4"
-	kimiworkaround "moonbridge/internal/extension/kimi_workaround"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/extension/visual"
-	"moonbridge/internal/format"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
+	dbd1 "providerbridge/internal/extension/db/d1"
+	dbsqlite "providerbridge/internal/extension/db/sqlite"
+	"providerbridge/internal/extension/deepseek_v4"
+	kimiworkaround "providerbridge/internal/extension/kimi_workaround"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/extension/visual"
+	"providerbridge/internal/format"
 )
 
 func ptrBool(v bool) *bool { return &v }
@@ -87,7 +87,7 @@ func TestPluginsReadCurrentRuntimeConfig(t *testing.T) {
 			},
 		},
 		Routes: map[string]config.RouteEntry{
-			"moonbridge": {
+			"provider-bridge": {
 				Provider: "anthropic",
 				Model:    "claude-3-5-sonnet",
 				Extensions: map[string]config.ExtensionSettings{
@@ -104,7 +104,7 @@ func TestPluginsReadCurrentRuntimeConfig(t *testing.T) {
 		},
 	}
 	runtimeCfg := initialCfg
-	runtimeCfg.Routes["moonbridge"] = config.RouteEntry{
+	runtimeCfg.Routes["provider-bridge"] = config.RouteEntry{
 		Provider: "anthropic",
 		Model:    "claude-3-5-sonnet",
 		Extensions: map[string]config.ExtensionSettings{
@@ -144,10 +144,10 @@ func TestPluginsReadCurrentRuntimeConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("plugin %q is not *DSPlugin", deepseekv4.PluginName)
 	}
-	if !dsPlugin.EnabledForModel("moonbridge") {
+	if !dsPlugin.EnabledForModel("provider-bridge") {
 		t.Fatal("deepseek_v4 should read enabled state from current config")
 	}
-	rewritten := dsPlugin.RewriteMessages(&plugin.RequestContext{ModelAlias: "moonbridge"}, []format.CoreMessage{{
+	rewritten := dsPlugin.RewriteMessages(&plugin.RequestContext{ModelAlias: "provider-bridge"}, []format.CoreMessage{{
 		Role:    "user",
 		Content: []format.CoreContentBlock{{Type: "text", Text: "hi"}},
 	}})
@@ -159,7 +159,7 @@ func TestPluginsReadCurrentRuntimeConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("plugin %q is not *Plugin", kimiworkaround.PluginName)
 	}
-	if !kimiPlugin.EnabledForModel("moonbridge") {
+	if !kimiPlugin.EnabledForModel("provider-bridge") {
 		t.Fatal("kimi_workaround should read enabled state from current config")
 	}
 	kimiMsgs := []format.CoreMessage{
@@ -169,7 +169,7 @@ func TestPluginsReadCurrentRuntimeConfig(t *testing.T) {
 		{Role: "assistant", Content: []format.CoreContentBlock{{Type: "tool_use", ToolUseID: "call_2", ToolName: "exec"}}},
 		{Role: "tool", Content: []format.CoreContentBlock{{Type: "tool_result", ToolUseID: "call_2", ToolResultContent: []format.CoreContentBlock{{Type: "text", Text: "ok"}}}}},
 	}
-	limited := kimiPlugin.RewriteMessages(&plugin.RequestContext{ModelAlias: "moonbridge"}, kimiMsgs)
+	limited := kimiPlugin.RewriteMessages(&plugin.RequestContext{ModelAlias: "provider-bridge"}, kimiMsgs)
 	lastResult := limited[len(limited)-1].Content[0].ToolResultContent
 	if len(lastResult) != 3 || lastResult[2].Text != kimiworkaround.DefaultLimitPrompt {
 		t.Fatalf("kimi rewrite did not use runtime limit config: %+v", lastResult)
@@ -179,10 +179,10 @@ func TestPluginsReadCurrentRuntimeConfig(t *testing.T) {
 	if !ok {
 		t.Fatalf("plugin %q is not *Plugin", visual.PluginName)
 	}
-	if !visualPlugin.EnabledForModel("moonbridge") {
+	if !visualPlugin.EnabledForModel("provider-bridge") {
 		t.Fatal("visual should read enabled state from current config")
 	}
-	visCfg, enabled := visual.ConfigForModelFromResolvedConfig(runtimeCfg, "moonbridge")
+	visCfg, enabled := visual.ConfigForModelFromResolvedConfig(runtimeCfg, "provider-bridge")
 	if !enabled || visCfg.Provider != "vision" || visCfg.Model != "vision-model" {
 		t.Fatalf("visual runtime config = %+v, enabled=%v", visCfg, enabled)
 	}

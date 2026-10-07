@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"log/slog"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 type Provider interface {

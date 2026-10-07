@@ -3,7 +3,7 @@ package codextoolproxy
 import (
 	"testing"
 
-	"moonbridge/internal/config"
+	"providerbridge/internal/config"
 )
 
 func TestDisablePatchProxyForModelDefaultEnabled(t *testing.T) {

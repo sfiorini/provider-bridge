@@ -4,14 +4,14 @@ import (
 	"encoding/json"
 	"testing"
 
-	deepseekv4 "moonbridge/internal/extension/deepseek_v4"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	openai "moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/stats"
-	"moonbridge/internal/session"
+	deepseekv4 "providerbridge/internal/extension/deepseek_v4"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	openai "providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/stats"
+	"providerbridge/internal/session"
 )
 
 func TestRequestHasImage(t *testing.T) {
@@ -349,4 +349,42 @@ func TestRememberStreamResponseContentCachesDeepSeekThinkingForLaterReplay(t *te
 	if head.Type != "thinking" || head.Thinking != "trace stream reasoning" || head.Signature != "sig-trace-stream" {
 		t.Fatalf("prepended stream-response thinking block mismatch, got %+v", head)
 	}
+}
+
+func TestCandidateSupportsImage(t *testing.T) {
+	t.Run("nil provider manager", func(t *testing.T) {
+		srv := &Server{}
+		if srv.candidateSupportsImage(provider.ProviderCandidate{}) {
+			t.Fatal("candidateSupportsImage() = true, want false when no provider manager is active")
+		}
+	})
+
+	t.Run("capability lookup via active provider manager", func(t *testing.T) {
+		pm, err := provider.NewProviderManager(
+			map[string]provider.ProviderConfig{
+				"deepseek": {
+					BaseURL: "https://deepseek.example.test",
+					APIKey:  "key-deepseek",
+					Models: map[string]provider.ModelMeta{
+						"deepseek-vision": {InputModalities: []string{"text", "image"}},
+					},
+				},
+			},
+			nil,
+		)
+		if err != nil {
+			t.Fatalf("NewProviderManager() error = %v", err)
+		}
+		srv := &Server{providerMgr: pm}
+
+		imageCapable := provider.ProviderCandidate{ProviderKey: "deepseek", UpstreamModel: "deepseek-vision"}
+		if !srv.candidateSupportsImage(imageCapable) {
+			t.Fatal("candidateSupportsImage() = false, want true for image-capable candidate")
+		}
+
+		noMeta := provider.ProviderCandidate{ProviderKey: "deepseek", UpstreamModel: "deepseek-plain"}
+		if srv.candidateSupportsImage(noMeta) {
+			t.Fatal("candidateSupportsImage() = true, want false for candidate without metadata")
+		}
+	})
 }

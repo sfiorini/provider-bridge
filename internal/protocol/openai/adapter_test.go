@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/openai"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/openai"
 )
 
 func TestToCoreRequest_BasicText(t *testing.T) {

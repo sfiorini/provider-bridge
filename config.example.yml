@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=./config.schema.json
 # =============================================================================
-# MoonBridge Configuration Example
+# Provider Bridge Configuration Example
 # =============================================================================
 # This file documents every configurable field and serves as a live reference.
 # Uncomment and adjust values for your own deployment.
@@ -26,7 +26,7 @@ server:
 
 # --- Defaults ----------------------------------------------------------------
 defaults:
-  model: "moonbridge"
+  model: "provider-bridge"
   max_tokens: 65536
   # system_prompt: ""                               # prepended to every request
 
@@ -111,7 +111,7 @@ extensions:
   db_sqlite:
     enabled: true
     config:
-      path: ./data/moonbridge.db
+      path: ./data/provider-bridge.db
       wal: true
       busy_timeout_ms: 5000
       max_open_conns: 1
@@ -120,7 +120,7 @@ extensions:
   # db_d1:
   #   enabled: true
   #   config:
-  #     binding: MOONBRIDGE_DB
+  #     binding: PROVIDER_BRIDGE_DB
 
   # Metrics: request analytics (optional)
   metrics:
@@ -132,12 +132,14 @@ extensions:
 # =============================================================================
 # Models
 # =============================================================================
-# Model metadata (context_window, display_name, reasoning_levels, modalities,
-# pricing, etc.) is stored in metadata/models/<slug>.json. The models section
-# below only contains runtime behaviour overrides: extension toggles and
-# web_search configuration at the model level.
+# Model metadata (context_window, max_output_tokens, display_name, reasoning_levels,
+# modalities, pricing, etc.) is declared per model below. The deployed model
+# inventory (with per-model verification status) lives in INVENTORY.md at the repo root.
 models:
   deepseek-v4-pro:
+    context_window: 1000000
+    max_output_tokens: 384000
+    input_modalities: ["text"]
     web_search:
       support: "auto"
     extensions:
@@ -146,7 +148,12 @@ models:
       visual:
         enabled: true
 
-  deepseek-v4-flash:
+  # `deepseek-v4-flash` is the retired upstream alias; live deployments serve it
+  # under `deepseek-flash` (see INVENTORY.md). This seed uses the current name.
+  deepseek-flash:
+    context_window: 1000000
+    max_output_tokens: 384000
+    input_modalities: ["text"]
     web_search:
       support: "auto"
     extensions:
@@ -156,6 +163,9 @@ models:
         enabled: true
 
   claude-sonnet-4-20250514:
+    context_window: 200000
+    max_output_tokens: 64000
+    input_modalities: ["text", "image"]
     extensions: {}   # no overrides, metadata only
 
   # kimi-for-coding:
@@ -168,7 +178,11 @@ models:
   # Used by Codex CLI for automatic review of privilege-elevation
   # (sandbox escalation) requests. Typically maps to a frontier model.
   codex-auto-review:
+    input_modalities: ["text"]
     extensions: {}
+
+  kimi-for-coding:
+    input_modalities: ["text"]
 
 # =============================================================================
 # Providers
@@ -179,7 +193,7 @@ providers:
     base_url: "https://api.deepseek.com/anthropic"
     api_key: "replace-with-deepseek-api-key"
     version: "2023-06-01"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     web_search:
       support: "auto"
     offers:
@@ -189,7 +203,7 @@ providers:
           output_price: 8
           cache_write_price: 1
           cache_read_price: 0.2
-      - model: deepseek-v4-flash
+      - model: deepseek-flash
         pricing:
           input_price: 1
           output_price: 2
@@ -201,7 +215,7 @@ providers:
     base_url: "https://api.kimi.com/coding/"
     api_key: "replace-with-kimi-api-key"
     version: "2023-06-01"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     offers:
       - model: kimi-for-coding
 
@@ -209,7 +223,7 @@ providers:
     protocol: "openai-response"
     base_url: "https://api.openai.com"
     api_key: "replace-with-openai-api-key"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     offers:
       - model: codex-auto-review
 
@@ -218,7 +232,7 @@ providers:
     base_url: "https://api.anthropic.com"
     api_key: "replace-with-anthropic-api-key"
     version: "2023-06-01"
-    user_agent: "moonbridge/1.0"
+    user_agent: "provider-bridge/1.0"
     web_search:
       support: "enabled"
     offers:
@@ -245,10 +259,10 @@ providers:
 # =============================================================================
 # Optional aliases. Provider models are listed directly in the Codex catalog
 # as model(provider) format (e.g. deepseek-v4-pro(deepseek)). Routes only
-# add friendly fallback names like "moonbridge".
+# add friendly fallback names like "provider-bridge".
 # Backward-compatible shorthand: <route>: "provider/upstream-model"
 routes:
-  moonbridge:
+  provider-bridge:
     model: deepseek-v4-pro
     provider: deepseek
   codex-auto-review:

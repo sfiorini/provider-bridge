@@ -205,15 +205,15 @@ func NewPlannerWithRegistry(cfg PlannerConfig, registry *MemoryRegistry) *Planne
 func (planner *Planner) Plan(input PlanInput) (CacheCreationPlan, error) {
 	log := slog.Default().With("model", input.Model)
 	if !planner.cfg.PromptCaching || planner.cfg.Mode == "off" {
-		log.Debug("缓存已禁用", "reason", "prompt_caching_disabled")
+		log.Debug("cache disabled", "reason", "prompt_caching_disabled")
 		return CacheCreationPlan{Mode: "off", TTL: planner.cfg.TTL, Reason: "prompt_caching_disabled"}, nil
 	}
 	if planner.cfg.MinCacheTokens > 0 && input.EstimatedTokens > 0 && input.EstimatedTokens < planner.cfg.MinCacheTokens {
-		log.Debug("缓存已禁用", "reason", "below_min_cache_tokens", "estimated_tokens", input.EstimatedTokens, "min", planner.cfg.MinCacheTokens)
+		log.Debug("cache disabled", "reason", "below_min_cache_tokens", "estimated_tokens", input.EstimatedTokens, "min", planner.cfg.MinCacheTokens)
 		return CacheCreationPlan{Mode: "off", TTL: planner.cfg.TTL, Reason: "below_min_cache_tokens"}, nil
 	}
 	if planner.cfg.MinimumValueScore > 0 && input.EstimatedTokens*planner.cfg.ExpectedReuse < planner.cfg.MinimumValueScore {
-		log.Debug("缓存已禁用", "reason", "below_minimum_value_score", "estimated_tokens", input.EstimatedTokens, "expected_reuse", planner.cfg.ExpectedReuse)
+		log.Debug("cache disabled", "reason", "below_minimum_value_score", "estimated_tokens", input.EstimatedTokens, "expected_reuse", planner.cfg.ExpectedReuse)
 		return CacheCreationPlan{Mode: "off", TTL: planner.cfg.TTL, Reason: "below_minimum_value_score"}, nil
 	}
 
@@ -233,13 +233,13 @@ func (planner *Planner) Plan(input PlanInput) (CacheCreationPlan, error) {
 	if planner.registry != nil {
 		if entry, ok := planner.registry.Get(plan.PrefixKey); ok && (entry.State == StateWarm || entry.State == StateWarming) && (entry.ExpiresAt.IsZero() || entry.ExpiresAt.After(time.Now())) {
 			plan.Reason = "registry_warm"
-			log.Debug("缓存注册表已预热", "prefix_key", plan.PrefixKey)
+			log.Debug("cache registry pre-warmed", "prefix_key", plan.PrefixKey)
 		}
 	}
 
 	if useExplicit {
 		plan.Breakpoints = planner.breakpoints(input)
-		log.Debug("缓存计划", "mode", plan.Mode, "breakpoints", len(plan.Breakpoints), "reason", plan.Reason)
+		log.Debug("cache plan", "mode", plan.Mode, "breakpoints", len(plan.Breakpoints), "reason", plan.Reason)
 		if len(plan.Breakpoints) == 0 {
 			if useAutomatic {
 				plan.Mode = "automatic"
@@ -254,7 +254,7 @@ func (planner *Planner) Plan(input PlanInput) (CacheCreationPlan, error) {
 			}, nil
 		}
 	}
-	log.Debug("缓存计划", "mode", plan.Mode, "breakpoints", len(plan.Breakpoints), "reason", plan.Reason)
+	log.Debug("cache plan", "mode", plan.Mode, "breakpoints", len(plan.Breakpoints), "reason", plan.Reason)
 	return plan, nil
 }
 

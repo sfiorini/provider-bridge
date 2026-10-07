@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/protocol/openai"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/openai"
 )
 
 // ============================================================================

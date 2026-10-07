@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/logger"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/stats"
 
-	mbtrace "moonbridge/internal/service/trace"
+	mbtrace "providerbridge/internal/service/trace"
 )
 
 func (server *Server) onRequestCompleted(model, actualModel, providerKey string, startTime time.Time, usage plugin.RequestUsage, cost float64, status, errMsg string) {
@@ -48,12 +48,12 @@ func (server *Server) onRequestCompleted(model, actualModel, providerKey string,
 }
 func (server *Server) handleResponses(writer http.ResponseWriter, request *http.Request) {
 	log := slog.Default().With("path", request.URL.Path, "method", request.Method, "remote", request.RemoteAddr)
-	log.Debug("收到请求")
+	log.Debug("request received")
 	requestStart := time.Now()
 	if request.Method != http.MethodPost {
-		log.Warn("方法不允许", "method", request.Method)
+		log.Warn("method not allowed", "method", request.Method)
 		writeOpenAIError(writer, http.StatusMethodNotAllowed, openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "方法不允许",
+			Message: "method not allowed",
 			Type:    "invalid_request_error",
 			Code:    "method_not_allowed",
 		}})
@@ -65,9 +65,9 @@ func (server *Server) handleResponses(writer http.ResponseWriter, request *http.
 	body, err := io.ReadAll(request.Body)
 	record := mbtrace.Record{HTTPRequest: mbtrace.NewHTTPRequest(request), OpenAIRequest: mbtrace.RawJSONOrString(body)}
 	if err != nil {
-		log.Error("读取请求体失败", "error", err)
+		log.Error("failed to read request body", "error", err)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "读取请求体失败",
+			Message: "failed to read request body",
 			Type:    "invalid_request_error",
 			Code:    "invalid_request_body",
 		}}
@@ -80,9 +80,9 @@ func (server *Server) handleResponses(writer http.ResponseWriter, request *http.
 
 	var responsesRequest openai.ResponsesRequest
 	if err := json.Unmarshal(body, &responsesRequest); err != nil {
-		log.Warn("无效的 JSON 请求体", "error", err)
+		log.Warn("invalid JSON body", "error", err)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "无效的 JSON 请求体",
+			Message: "invalid JSON body",
 			Type:    "invalid_request_error",
 			Code:    "invalid_json",
 		}}
@@ -103,10 +103,10 @@ func (server *Server) handleResponses(writer http.ResponseWriter, request *http.
 			}
 			candidateInfo += c.ProviderKey + "=" + c.UpstreamModel + "(p" + fmt.Sprint(i) + ")"
 		}
-		log.Debug("路由解析结果", "model", responsesRequest.Model, "candidates", candidateInfo)
+		log.Debug("route resolution result", "model", responsesRequest.Model, "candidates", candidateInfo)
 	}
 	if resolveErr != nil {
-		log.Warn("请求了未知模型", "model", responsesRequest.Model)
+		log.Warn("requested unknown model", "model", responsesRequest.Model)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
 			Message: fmt.Sprintf("unknown model: %q", responsesRequest.Model),
 			Type:    "invalid_request_error",
@@ -122,7 +122,7 @@ func (server *Server) handleResponses(writer http.ResponseWriter, request *http.
 	// Filter candidates by request features (e.g., image input).
 	filteredCandidates, filterReason := server.filterCandidatesByInput(resolvedRoute.Candidates, responsesRequest.Input)
 	if len(filteredCandidates) == 0 {
-		log.Warn("过滤后无可用提供商", "model", responsesRequest.Model, "reason", filterReason)
+		log.Warn("no available provider after filtering", "model", responsesRequest.Model, "reason", filterReason)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
 			Message: fmt.Sprintf("no available provider for model %q with the requested features", responsesRequest.Model),
 			Type:    "invalid_request_error",
@@ -136,16 +136,16 @@ func (server *Server) handleResponses(writer http.ResponseWriter, request *http.
 	}
 	resolvedRoute.Candidates = filteredCandidates
 	if filterReason != "" {
-		log.Info("候选过滤", "model", responsesRequest.Model, "reason", filterReason)
+		log.Info("candidate filter", "model", responsesRequest.Model, "reason", filterReason)
 	}
 
 	// Protocol branch: get preferred candidate.
 	preferred, ok := resolvedRoute.Preferred()
 	if ok {
-		log.Debug("选中提供商", "model", responsesRequest.Model, "provider", preferred.ProviderKey, "upstream", preferred.UpstreamModel)
+		log.Debug("provider selected", "model", responsesRequest.Model, "provider", preferred.ProviderKey, "upstream", preferred.UpstreamModel)
 	}
 	if !ok {
-		log.Error("模型解析结果无可用提供商", "model", responsesRequest.Model)
+		log.Error("model resolution produced no available provider", "model", responsesRequest.Model)
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
 			Message: fmt.Sprintf("no available provider for model %q", responsesRequest.Model),
 			Type:    "server_error",
@@ -193,7 +193,7 @@ func (server *Server) writeTrace(record mbtrace.Record) {
 	}
 	requestNumber := server.tracer.NextRequestNumber()
 
-	// Chat 分类：openai-chat 协议的请求/响应
+	// Chat category: requests/responses for the openai-chat protocol
 	if shouldWriteChatTrace(record) {
 		server.writeTraceCategory("Chat", requestNumber, mbtrace.Record{
 			HTTPRequest:      record.HTTPRequest,
@@ -230,7 +230,7 @@ func (server *Server) writeTrace(record mbtrace.Record) {
 }
 func (server *Server) writeTraceCategory(category string, requestNumber uint64, record mbtrace.Record) {
 	if _, err := server.tracer.WriteNumbered(category, requestNumber, record); err != nil && server.traceErrors != nil {
-		fmt.Fprintf(server.traceErrors, "跟踪 %s 写入失败: %v\n", category, err)
+		fmt.Fprintf(server.traceErrors, "trace %s write failed: %v\n", category, err)
 	}
 }
 func shouldWriteResponseTrace(record mbtrace.Record) bool {
@@ -290,9 +290,9 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 	}()
 	log := slog.Default().With("path", request.URL.Path, "method", request.Method)
 	if pm == nil {
-		log.Error("未配置 OpenAI Responses 直通的提供商管理器")
+		log.Error("provider manager for OpenAI Responses passthrough not configured")
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "提供商路由未配置",
+			Message: "provider routing not configured",
 			Type:    "server_error",
 			Code:    "internal_error",
 		}}
@@ -312,9 +312,9 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 		}
 	}
 	if len(openaiCandidates) == 0 {
-		log.Error("没有 OpenAI Responses 协议的提供商候选")
+		log.Error("no provider candidates for the OpenAI Responses protocol")
 		payload := openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "没有可用的提供商",
+			Message: "no available provider",
 			Type:    "server_error",
 			Code:    "provider_error",
 		}}
@@ -341,9 +341,9 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 		apiKey := pm.ProviderAPIKey(providerKey)
 		if baseURL == "" {
 			if isLast {
-				log.Error("OpenAI 提供商缺少 base_url")
+				log.Error("OpenAI provider missing base_url")
 				payload := openai.ErrorResponse{Error: openai.ErrorObject{
-					Message: "提供商未配置",
+					Message: "provider not configured",
 					Type:    "server_error",
 					Code:    "internal_error",
 				}}
@@ -354,7 +354,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 				writeOpenAIError(writer, http.StatusBadGateway, payload)
 				return
 			}
-			logger.Warn("OpenAI 提供商缺少 base_url，尝试下一个候选",
+			logger.Warn("OpenAI provider missing base_url; trying next candidate",
 				"provider", providerKey,
 				"request_model", responsesRequest.Model,
 				"attempt", i+1)
@@ -380,9 +380,9 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 		body, err := json.Marshal(upstreamRequest)
 		if err != nil {
 			if isLast {
-				log.Error("序列化请求失败", "error", err)
+				log.Error("failed to serialize request", "error", err)
 				payload := openai.ErrorResponse{Error: openai.ErrorObject{
-					Message: "内部错误",
+					Message: "internal error",
 					Type:    "server_error",
 					Code:    "internal_error",
 				}}
@@ -393,7 +393,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 				writeOpenAIError(writer, http.StatusInternalServerError, payload)
 				return
 			}
-			logger.Warn("OpenAI 请求序列化失败，尝试下一个候选",
+			logger.Warn("OpenAI request serialization failed; trying next candidate",
 				"provider", providerKey,
 				"request_model", responsesRequest.Model,
 				"attempt", i+1,
@@ -406,9 +406,9 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 		upstreamReq, err := http.NewRequestWithContext(request.Context(), http.MethodPost, upstreamURL, bytes.NewReader(body))
 		if err != nil {
 			if isLast {
-				log.Error("创建上游请求失败", "error", err)
+				log.Error("failed to create upstream request", "error", err)
 				payload := openai.ErrorResponse{Error: openai.ErrorObject{
-					Message: "上游请求失败",
+					Message: "upstream request failed",
 					Type:    "server_error",
 					Code:    "internal_error",
 				}}
@@ -419,7 +419,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 				writeOpenAIError(writer, http.StatusBadGateway, payload)
 				return
 			}
-			logger.Warn("OpenAI 上游请求创建失败，尝试下一个候选",
+			logger.Warn("OpenAI upstream request creation failed; trying next candidate",
 				"provider", providerKey,
 				"request_model", responsesRequest.Model,
 				"attempt", i+1,
@@ -437,7 +437,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 		upstreamResp, err := client.Do(upstreamReq)
 		if err != nil {
 			if isLast {
-				log.Error("OpenAI 上游请求失败",
+				log.Error("OpenAI upstream request failed",
 					"request_model", responsesRequest.Model,
 					"actual_model", upstreamRequest.Model,
 					"error", err.Error(),
@@ -455,7 +455,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 				writeOpenAIError(writer, http.StatusBadGateway, payload)
 				return
 			}
-			logger.Warn("OpenAI 上游连接失败，回退到下一个候选",
+			logger.Warn("OpenAI upstream connection failed; falling back to next candidate",
 				"request_model", responsesRequest.Model,
 				"attempt", i+1,
 				"provider", providerKey,
@@ -468,7 +468,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 
 		// Log successful fallback if not on the first candidate
 		if i > 0 {
-			logger.Info("OpenAI 回退成功",
+			logger.Info("OpenAI fallback succeeded",
 				"request_model", responsesRequest.Model,
 				"final_provider", providerKey,
 				"final_model", candidate.UpstreamModel,
@@ -495,7 +495,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 		}
 		if _, err := io.Copy(target, upstreamResp.Body); err != nil {
 			hookErr = "copy upstream response"
-			log.Error("复制上游响应失败", "error", err)
+			log.Error("failed to copy upstream response", "error", err)
 			return
 		}
 
@@ -545,7 +545,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 	}
 
 	// All candidates failed
-	log.Error("所有 OpenAI Responses 提供商候选均失败",
+	log.Error("all OpenAI Responses provider candidates failed",
 		"request_model", responsesRequest.Model,
 		"candidates_count", len(openaiCandidates),
 		"last_error", lastErr,

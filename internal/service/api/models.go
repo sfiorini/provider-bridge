@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/service/store"
 )
 
 // ---- Models ----
@@ -75,14 +75,14 @@ func (r *Router) handleListModels(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleGetModel(w http.ResponseWriter, req *http.Request) {
 	slug := req.PathValue("slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "invalid_slug", "无效的 model slug")
+		respondError(w, http.StatusBadRequest, "invalid_slug", "invalid model slug")
 		return
 	}
 
 	cfg := r.runtime.Current()
 	def, ok := cfg.Config.Models[slug]
 	if !ok {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("model %q 不存在", slug))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("model %q does not exist", slug))
 		return
 	}
 
@@ -114,7 +114,7 @@ func (r *Router) handleGetModel(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handlePutModel(w http.ResponseWriter, req *http.Request) {
 	slug := req.PathValue("slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "invalid_slug", "无效的 model slug")
+		respondError(w, http.StatusBadRequest, "invalid_slug", "invalid model slug")
 		return
 	}
 
@@ -126,7 +126,7 @@ func (r *Router) handlePutModel(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 
@@ -150,7 +150,7 @@ func (r *Router) handlePutModel(w http.ResponseWriter, req *http.Request) {
 		After:     string(afterJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
@@ -164,13 +164,13 @@ func (r *Router) handlePutModel(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handleDeleteModel(w http.ResponseWriter, req *http.Request) {
 	slug := req.PathValue("slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "invalid_slug", "无效的 model slug")
+		respondError(w, http.StatusBadRequest, "invalid_slug", "invalid model slug")
 		return
 	}
 
 	cfg := r.runtime.Current()
 	if _, ok := cfg.Config.Models[slug]; !ok {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("model %q 不存在", slug))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("model %q does not exist", slug))
 		return
 	}
 
@@ -179,7 +179,7 @@ func (r *Router) handleDeleteModel(w http.ResponseWriter, req *http.Request) {
 		for _, offer := range def.Offers {
 			if offer.Model == slug {
 				respondError(w, http.StatusConflict, "referenced",
-					fmt.Sprintf("model %q 仍被 provider %q 引用，无法删除", slug, pk))
+					fmt.Sprintf("model %q is still referenced by provider %q and cannot be deleted", slug, pk))
 				return
 			}
 		}
@@ -191,7 +191,7 @@ func (r *Router) handleDeleteModel(w http.ResponseWriter, req *http.Request) {
 		TargetKey: slug,
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存删除失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage deletion: %v", err))
 		return
 	}
 

@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"moonbridge/internal/service/configgraph"
+	"providerbridge/internal/service/configgraph"
 )
 
 type createConfigResourceRequest struct {
@@ -33,7 +33,7 @@ func (r *Router) handleGetConfigGraph(w http.ResponseWriter, req *http.Request) 
 	graph, err := r.configGraphService().Graph(req.Context())
 	if err != nil {
 		slog.Default().Error("get config graph failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("读取配置图失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("failed to read config graph: %v", err))
 		return
 	}
 	respondJSON(w, http.StatusOK, graph)
@@ -42,14 +42,14 @@ func (r *Router) handleGetConfigGraph(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handlePatchConfigGraph(w http.ResponseWriter, req *http.Request) {
 	var body configgraph.PatchRequest
 	if err := decodeStrictJSON(req, &body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("无效的 JSON 请求体: %v", err))
+		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("invalid JSON body: %v", err))
 		return
 	}
 
 	resp, err := r.configGraphService().Patch(req.Context(), body)
 	if err != nil {
 		slog.Default().Error("patch config graph failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("更新配置图失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("failed to update config graph: %v", err))
 		return
 	}
 	respondConfigGraphPatch(w, resp)
@@ -58,14 +58,14 @@ func (r *Router) handlePatchConfigGraph(w http.ResponseWriter, req *http.Request
 func (r *Router) handleValidateConfigGraph(w http.ResponseWriter, req *http.Request) {
 	var body configgraph.PatchRequest
 	if err := decodeStrictJSON(req, &body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("无效的 JSON 请求体: %v", err))
+		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("invalid JSON body: %v", err))
 		return
 	}
 
 	resp, err := r.configGraphService().Validate(req.Context(), body)
 	if err != nil {
 		slog.Default().Error("validate config graph failed", "error", err)
-		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("验证配置图失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("failed to validate config graph: %v", err))
 		return
 	}
 	respondConfigGraphPatch(w, resp)
@@ -74,13 +74,13 @@ func (r *Router) handleValidateConfigGraph(w http.ResponseWriter, req *http.Requ
 func (r *Router) handleCreateConfigResource(w http.ResponseWriter, req *http.Request) {
 	kind, ok := parseResourceKind(req.PathValue("kind"))
 	if !ok {
-		respondError(w, http.StatusBadRequest, "invalid_resource_kind", "无效的配置资源类型")
+		respondError(w, http.StatusBadRequest, "invalid_resource_kind", "invalid config resource kind")
 		return
 	}
 
 	var body createConfigResourceRequest
 	if err := decodeStrictJSON(req, &body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("无效的 JSON 请求体: %v", err))
+		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("invalid JSON body: %v", err))
 		return
 	}
 	if body.Value == nil {
@@ -94,7 +94,7 @@ func (r *Router) handleCreateConfigResource(w http.ResponseWriter, req *http.Req
 	resp, err := r.configGraphService().CreateResource(req.Context(), kind, body.ID, body.Value)
 	if err != nil {
 		slog.Default().Error("create config graph resource failed", "kind", kind, "id", body.ID, "error", err)
-		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("创建配置资源失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("failed to create config resource: %v", err))
 		return
 	}
 	respondConfigGraphPatch(w, resp)
@@ -103,24 +103,24 @@ func (r *Router) handleCreateConfigResource(w http.ResponseWriter, req *http.Req
 func (r *Router) handleDeleteConfigResource(w http.ResponseWriter, req *http.Request) {
 	kind, ok := parseResourceKind(req.PathValue("kind"))
 	if !ok {
-		respondError(w, http.StatusBadRequest, "invalid_resource_kind", "无效的配置资源类型")
+		respondError(w, http.StatusBadRequest, "invalid_resource_kind", "invalid config resource kind")
 		return
 	}
 	id := req.PathValue("id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "invalid_resource_id", "无效的配置资源 ID")
+		respondError(w, http.StatusBadRequest, "invalid_resource_id", "invalid config resource ID")
 		return
 	}
 
 	baseRevision, err := deleteBaseRevision(req)
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("无效的 JSON 请求体: %v", err))
+		respondError(w, http.StatusBadRequest, "invalid_json", fmt.Sprintf("invalid JSON body: %v", err))
 		return
 	}
 	resp, err := r.configGraphService().DeleteResource(req.Context(), kind, id, baseRevision)
 	if err != nil {
 		slog.Default().Error("delete config graph resource failed", "kind", kind, "id", id, "error", err)
-		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("删除配置资源失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "config_graph_error", fmt.Sprintf("failed to delete config resource: %v", err))
 		return
 	}
 	respondConfigGraphPatch(w, resp)

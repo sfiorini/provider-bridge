@@ -305,44 +305,6 @@ export const baseStyles = `
     font-weight: 600;
   }
 
-  .locale-switch {
-    min-height: 38px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    border: 1px solid color-mix(in srgb, var(--mb-color-outline-variant) 60%, transparent);
-    border-radius: var(--mb-button-shape);
-    padding: 3px;
-    background: var(--mb-color-surface-container);
-  }
-
-  .locale-switch > span {
-    min-height: 30px;
-    display: inline-flex;
-    align-items: center;
-    padding: 0 7px;
-    color: var(--mb-color-on-surface-variant);
-    font-size: 0.75rem;
-    font-weight: 700;
-  }
-
-  .locale-switch__button {
-    min-width: 36px;
-    min-height: 30px;
-    --md-filled-button-container-height: 30px;
-    --md-filled-button-container-shape: var(--mb-button-shape);
-    --md-filled-button-label-text-size: 0.75rem;
-    --md-filled-button-label-text-weight: 700;
-    --md-filled-button-leading-space: 10px;
-    --md-filled-button-trailing-space: 10px;
-    --md-outlined-button-container-height: 30px;
-    --md-outlined-button-container-shape: var(--mb-button-shape);
-    --md-outlined-button-label-text-size: 0.75rem;
-    --md-outlined-button-label-text-weight: 700;
-    --md-outlined-button-leading-space: 10px;
-    --md-outlined-button-trailing-space: 10px;
-  }
-
   md-filled-button {
     --md-filled-button-container-color: var(--mb-color-primary);
     --md-filled-button-label-text-color: var(--mb-color-on-primary);

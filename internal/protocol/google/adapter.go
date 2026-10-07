@@ -1,4 +1,4 @@
-// Package google implements the Google Generative AI (Gemini) ProviderAdapter for MoonBridge.
+// Package google implements the Google Generative AI (Gemini) ProviderAdapter for ProviderBridge.
 //
 // GeminiProviderAdapter converts between Core format and Gemini REST API DTOs.
 // It implements format.ProviderAdapter (non-streaming) and format.ProviderStreamAdapter (streaming).
@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"sync"
 
-	"moonbridge/internal/extension/codextool"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/cache"
+	"providerbridge/internal/extension/codextool"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/cache"
 )
 
 // ============================================================================

@@ -315,33 +315,6 @@ describe("ResourceEditorCard", () => {
     expect(container.querySelectorAll(".resource-editor-card__facts .resource-meta-pill")).toHaveLength(4);
   });
 
-  test("localizes resource metadata in Chinese locale", () => {
-    vi.spyOn(configGraph, "patchConfigGraph").mockResolvedValue({
-      result: "committed",
-      revision: "rev-2"
-    });
-    const server = resource("server", "main", "Server", {
-      addr: "127.0.0.1:38440"
-    }, [
-      field("addr", "Address")
-    ], {
-      hotReloadable: false,
-      runtimeImpact: "critical",
-      status: "restartRequired"
-    });
-
-    renderWithConsoleProviders(
-      <ResourceEditorCard resource={server} revision="rev-1" title="Server" />,
-      { locale: "zh-CN" }
-    );
-
-    expect(screen.getByText("需要重启")).toBeInTheDocument();
-    expect(screen.getByText("关键运行时")).toBeInTheDocument();
-    expect(screen.getAllByText("1 个字段").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("变更后重启").length).toBeGreaterThan(0);
-    expect(within(screen.getByLabelText("main 状态")).getByText("需要重启")).toBeInTheDocument();
-  });
-
   test("renders provider pricing and model overrides as structured panels", async () => {
     const patch = vi.spyOn(configGraph, "patchConfigGraph").mockResolvedValue({
       result: "committed",
@@ -522,7 +495,7 @@ describe("ResourceEditorCard", () => {
     });
     const route = resource("route", "primary", "Primary Route", {
       to: "primary",
-      model: "moonbridge-default",
+      model: "providerbridge-default",
       provider: "anthropic",
       display_name: "Primary Route"
     }, [
@@ -534,7 +507,7 @@ describe("ResourceEditorCard", () => {
 
     renderWithConsoleProviders(
       <ResourceEditorCard
-        modelDisplayNames={{ "moonbridge-default": "GPT-4o" }}
+        modelDisplayNames={{ "providerbridge-default": "GPT-4o" }}
         resource={route}
         revision="rev-1"
         title="Route"
@@ -572,7 +545,7 @@ describe("ResourceEditorCard", () => {
     });
     const route = resource("route", "primary", "Primary Route", {
       to: "claude-sonnet",
-      model: "moonbridge-default",
+      model: "providerbridge-default",
       provider: "local",
       display_name: "Gemini Flash"
     }, [
@@ -584,7 +557,7 @@ describe("ResourceEditorCard", () => {
 
     renderWithConsoleProviders(
       <ResourceEditorCard
-        modelDisplayNames={{ "moonbridge-default": "GPT-4o" }}
+        modelDisplayNames={{ "providerbridge-default": "GPT-4o" }}
         resource={route}
         revision="rev-1"
         title="Route"

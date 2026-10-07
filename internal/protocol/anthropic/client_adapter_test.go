@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/chat"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/chat"
 )
 
 // TestInboundToolHistoryToChatWire reproduces the Anthropic tool-use history

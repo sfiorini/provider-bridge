@@ -3,8 +3,8 @@ import "@material/web/ripple/ripple.js";
 import { createElement, type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { motion } from "motion/react";
-import { MaterialFilledButton, MaterialIconButton, MaterialOutlinedButton } from "../components/MaterialButton";
-import { type Locale, type MessageKey } from "../i18n/messages";
+import { MaterialIconButton } from "../components/MaterialButton";
+import { type MessageKey } from "../i18n/messages";
 import { useI18n } from "../i18n/I18nProvider";
 import { useConsoleTheme } from "../theme/ThemeProvider";
 import { pageMotion, springs } from "../theme/motion";
@@ -44,7 +44,7 @@ export function AppShell({ content }: { content?: ReactNode }) {
 
 function AppShellContent({ content }: { content?: ReactNode }) {
   const { theme, toggleTheme } = useConsoleTheme();
-  const { locale, setLocale, t } = useI18n();
+  const { t } = useI18n();
   const { signOut } = useConsoleAuth();
   const nextTheme = theme === "dark" ? "light" : "dark";
   const themeIcon = theme === "dark" ? "light_mode" : "dark_mode";
@@ -54,21 +54,10 @@ function AppShellContent({ content }: { content?: ReactNode }) {
     <div className="app-shell">
       <header className="top-app-bar">
         <div>
-          <p>Moon Bridge</p>
+          <p>Provider Bridge</p>
           <strong>{t("app.console")}</strong>
         </div>
         <div className="top-app-bar__meta">
-          <div className="locale-switch" role="group" aria-label={t("app.language")}>
-            <span>{t("app.language")}</span>
-            {(["en-US", "zh-CN"] as const).map((nextLocale) => (
-              <LocaleButton
-                key={nextLocale}
-                label={t(nextLocale === "en-US" ? "app.language.en" : "app.language.zh")}
-                onClick={() => setLocale(nextLocale)}
-                selected={locale === nextLocale}
-              />
-            ))}
-          </div>
           <motion.div
             className="theme-toggle"
             whileHover={{ scale: 1.06 }}
@@ -116,29 +105,6 @@ function AppShellContent({ content }: { content?: ReactNode }) {
         </motion.main>
       </div>
     </div>
-  );
-}
-
-function LocaleButton({
-  label,
-  onClick,
-  selected
-}: {
-  label: string;
-  onClick: () => void;
-  selected: boolean;
-}) {
-  if (selected) {
-    return (
-      <MaterialFilledButton ariaPressed={selected} className="locale-switch__button" onClick={onClick}>
-        {label}
-      </MaterialFilledButton>
-    );
-  }
-  return (
-    <MaterialOutlinedButton ariaPressed={selected} className="locale-switch__button" onClick={onClick}>
-      {label}
-    </MaterialOutlinedButton>
   );
 }
 

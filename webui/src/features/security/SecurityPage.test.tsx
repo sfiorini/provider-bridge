@@ -25,18 +25,9 @@ describe("SecurityPage", () => {
     expect(screen.getByLabelText("Auth token")).toHaveValue("");
     expect(screen.queryByDisplayValue("******")).not.toBeInTheDocument();
     expect(screen.getByText("Restart required")).toBeInTheDocument();
-  });
-
-  test("localizes page chrome in Chinese locale", async () => {
-    vi.spyOn(configGraph, "getConfigGraph").mockResolvedValue(configGraphFixture());
-
-    renderWithConsoleProviders(<SecurityPage />, { locale: "zh-CN" });
-
-    expect(await screen.findByRole("heading", { level: 2, name: "服务访问" })).toBeInTheDocument();
-    expect(within(screen.getByLabelText("服务访问 main 状态")).getByText("需要重启")).toBeInTheDocument();
-    expect(getMaterialTextField(document, "认证 Token").supportingText).toBe("输入新值以替换已保存的密钥。");
-    expect(getMaterialTextField(document, "认证 Token")).toHaveAttribute("aria-label", "认证 Token");
-    expect(screen.queryByLabelText("Auth Token")).not.toBeInTheDocument();
+    expect(getMaterialTextField(document, "Auth token").supportingText).toBe(
+      "Enter a new value to replace the saved secret."
+    );
   });
 });
 

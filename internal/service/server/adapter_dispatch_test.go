@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/runtime"
+	"providerbridge/internal/config"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/runtime"
 )
 
 func TestCoreResponseToCoreStreamEmitsUsageOnCompleted(t *testing.T) {
@@ -212,7 +212,7 @@ func TestInjectCoreWebSearchAutoInjectedAddsToolsWithoutExplicitRequestTools(t *
 	coreReq := &format.CoreRequest{Model: "deepseek-v4-pro"}
 	openAIReq := openai.ResponsesRequest{
 		Model: "deepseek-v4-pro",
-		Input: json.RawMessage(`"搜索互联网获取今天的日期"`),
+		Input: json.RawMessage(`"search the web for today's date"`),
 	}
 	ok := srv.injectCoreWebSearch(context.Background(), coreReq, provider.ProviderCandidate{
 		ProviderKey:   "opencode",
@@ -252,7 +252,7 @@ func TestInjectCoreWebSearchSkipsWhenCandidateHasNativeSearch(t *testing.T) {
 	coreReq := &format.CoreRequest{Model: "deepseek-v4-flash"}
 	openAIReq := openai.ResponsesRequest{
 		Model: "deepseek-v4-flash",
-		Input: json.RawMessage(`"搜索互联网获取今天的日期"`),
+		Input: json.RawMessage(`"search the web for today's date"`),
 	}
 	ok := srv.injectCoreWebSearch(context.Background(), coreReq, provider.ProviderCandidate{
 		ProviderKey:   "deepseek",

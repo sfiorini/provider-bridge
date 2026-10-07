@@ -12,17 +12,17 @@ import (
 	"syscall"
 
 	"log/slog"
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/codex"
-	"moonbridge/internal/logger"
-	"moonbridge/internal/service/app"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/codex"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/service/app"
 )
 
 const (
 	exitOK          = 0
 	exitRuntimeErr  = 1
 	exitStartupErr  = 2
-	defaultProgName = "moonbridge"
+	defaultProgName = "providerbridge"
 )
 
 func main() {
@@ -55,13 +55,13 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	extensions := app.BuiltinExtensions()
 	resolvedConfigPath, err := config.ResolveConfigPath(*configPath)
 	if err != nil {
-		writeStartupError(stderr, "配置文件路径解析失败", "", err,
-			"设置 HOME，或使用 -config 明确指定配置文件路径。")
+		writeStartupError(stderr, "failed to resolve config file path", "", err,
+			"Set HOME, or use -config to specify the config file path explicitly.")
 		return exitStartupErr
 	}
 	if *dumpConfigSchema {
 		if err := app.DumpConfigSchema(resolvedConfigPath); err != nil {
-			writeStartupError(stderr, "Schema dump 失败", resolvedConfigPath, err)
+			writeStartupError(stderr, "schema dump failed", resolvedConfigPath, err)
 			return exitStartupErr
 		}
 		fmt.Fprintln(stdout, resolvedConfigPath)
@@ -73,12 +73,12 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 			ExtensionSpecs: extensions.ConfigSpecs(),
 		})
 		if err != nil {
-			writeStartupError(stderr, "默认配置创建失败", resolvedConfigPath, err,
-				"确认 HOME 目录可写，或使用 -config 指向已有配置文件。")
+			writeStartupError(stderr, "failed to create default config", resolvedConfigPath, err,
+				"Verify the HOME directory is writable, or point -config at an existing config file.")
 			return exitStartupErr
 		}
 		if created {
-			fmt.Fprintf(stderr, "已创建默认配置: %s\n", resolvedConfigPath)
+			fmt.Fprintf(stderr, "created default config: %s\n", resolvedConfigPath)
 		}
 	}
 
@@ -86,25 +86,25 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 		ExtensionSpecs: extensions.ConfigSpecs(),
 	})
 	if err != nil {
-		writeStartupError(stderr, "配置文件加载失败", resolvedConfigPath, err,
-			"未传 -config 时默认读取 $HOME/moonbridge/config.yml。",
-			"检查 YAML 语法、字段拼写和缩进。",
-			"确认 provider、routes、developer.proxy 等必填配置都已补齐。",
-			"如果是 protocol 字段，Responses 直通请使用 openai-response。")
+		writeStartupError(stderr, "failed to load config file", resolvedConfigPath, err,
+			"When -config is omitted, the default is $HOME/provider-bridge/config.yml.",
+			"Check YAML syntax, field spelling and indentation.",
+			"Ensure required config such as provider, routes and developer.proxy is present.",
+			"For the protocol field, use openai-response for Responses passthrough.")
 		return exitStartupErr
 	}
 	if err := logger.Init(logger.Config{Level: logger.Level(cfg.LogLevel), Format: cfg.LogFormat, Output: stderr}); err != nil {
-		writeStartupError(stderr, "日志初始化失败", resolvedConfigPath, err,
-			"检查 log.level 和 log.format 是否为支持的取值。")
+		writeStartupError(stderr, "failed to initialize logging", resolvedConfigPath, err,
+			"Check that log.level and log.format use supported values.")
 		return exitStartupErr
 	}
-	slog.Info("配置已加载", "path", resolvedConfigPath, "mode", cfg.Mode, "addr", cfg.Addr)
+	slog.Info("config loaded", "path", resolvedConfigPath, "mode", cfg.Mode, "addr", cfg.Addr)
 	if *mode != "" {
 		cfg.Mode = config.Mode(*mode)
 		if err := cfg.Validate(); err != nil {
-			writeStartupError(stderr, "配置校验失败", resolvedConfigPath, fmt.Errorf("-mode %q: %w", *mode, err),
-				"检查 -mode 是否为 Transform、CaptureResponse 或 CaptureAnthropic。",
-				"对应模式下的 provider / developer.proxy 配置也必须完整。")
+			writeStartupError(stderr, "config validation failed", resolvedConfigPath, fmt.Errorf("-mode %q: %w", *mode, err),
+				"Check that -mode is Transform, CaptureResponse or CaptureAnthropic.",
+				"The provider / developer.proxy config for that mode must also be complete.")
 			return exitStartupErr
 		}
 	}
@@ -134,8 +134,8 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	if *printCodexConfig != "" {
 		if err := codex.GenerateConfigToml(stdout, *printCodexConfig, *codexBaseURL, *codexHome,
 			config.ProviderFromGlobalConfig(&cfg), config.PluginFromGlobalConfig(&cfg), config.ServerFromGlobalConfig(&cfg)); err != nil {
-			writeStartupError(stderr, "生成 Codex 配置失败", resolvedConfigPath, err,
-				"确认 -codex-home 目录可写，或去掉 -codex-home 只打印 config.toml。")
+			writeStartupError(stderr, "failed to generate Codex config", resolvedConfigPath, err,
+				"Verify the -codex-home directory is writable, or drop -codex-home to only print config.toml.")
 			return exitRuntimeErr
 		}
 		return exitOK
@@ -145,8 +145,8 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	defer stop()
 
 	if err := app.RunServer(ctx, cfg, stderr); err != nil {
-		writeStartupError(stderr, "服务运行失败", resolvedConfigPath, err,
-			"检查监听地址是否被占用，以及上游 provider 配置是否可用。")
+		writeStartupError(stderr, "server run failed", resolvedConfigPath, err,
+			"Check whether the listen address is in use and that the upstream provider config is usable.")
 		return exitRuntimeErr
 	}
 	return exitOK
@@ -287,18 +287,18 @@ func cleanupTempPath(path string, cause error) error {
 }
 
 func writeStartupError(output io.Writer, title string, configPath string, err error, hints ...string) {
-	fmt.Fprintf(output, "Moon Bridge 启动失败：%s\n", title)
+	fmt.Fprintf(output, "Provider Bridge failed to start: %s\n", title)
 	if configPath != "" {
-		fmt.Fprintf(output, "配置文件: %s\n", configPath)
+		fmt.Fprintf(output, "config file: %s\n", configPath)
 	}
-	fmt.Fprintln(output, "错误详情:")
+	fmt.Fprintln(output, "error details:")
 	for i, msg := range errorChain(err) {
 		fmt.Fprintf(output, "  %d. %s\n", i+1, msg)
 	}
 	if len(hints) == 0 {
 		return
 	}
-	fmt.Fprintln(output, "处理建议:")
+	fmt.Fprintln(output, "suggestions:")
 	for _, hint := range hints {
 		fmt.Fprintf(output, "  - %s\n", hint)
 	}

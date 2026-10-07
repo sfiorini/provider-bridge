@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/store"
 )
 
 // ---------------------------------------------------------------------------
@@ -133,7 +133,7 @@ func TestE2EProviderFullLifecycle(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: Import → preview → apply 全流程
+// E2E: full import → preview → apply flow
 // ---------------------------------------------------------------------------
 
 func TestE2EConfigImportPreviewApply(t *testing.T) {
@@ -215,7 +215,7 @@ models:
 }
 
 // ---------------------------------------------------------------------------
-// E2E: 修改 provider 并多次变更（确保不因唯一 provider 删除导致失败）
+// E2E: modify a provider with multiple changes (ensure a sole-provider delete does not fail)
 // ---------------------------------------------------------------------------
 
 func TestE2EProviderUpdateThenDelete(t *testing.T) {
@@ -276,7 +276,7 @@ func TestE2EProviderUpdateThenDelete(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: 引用完整性 — 删除被 offers 引用的 model 被拒 (409)
+// E2E: referential integrity — deleting a model referenced by offers is rejected (409)
 // ---------------------------------------------------------------------------
 
 func TestE2EReferenceIntegrityModelWithOffers(t *testing.T) {
@@ -315,7 +315,7 @@ func TestE2EReferenceIntegrityModelWithOffers(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: Secret 脱敏 + PATCH 保留旧 key
+// E2E: secret masking + PATCH preserving the old key
 // ---------------------------------------------------------------------------
 
 func TestE2ESecretMaskingAndPatchPreserve(t *testing.T) {
@@ -368,7 +368,7 @@ func TestE2ESecretMaskingAndPatchPreserve(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: 无效变更被拒绝
+// E2E: invalid changes rejected
 // ---------------------------------------------------------------------------
 
 func TestE2EInvalidChangeRejected(t *testing.T) {
@@ -401,7 +401,7 @@ func TestE2EInvalidChangeRejected(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: 配置导出验证
+// E2E: config export verification
 // ---------------------------------------------------------------------------
 
 func TestE2EConfigExportAfterApply(t *testing.T) {
@@ -431,7 +431,7 @@ func TestE2EConfigExportAfterApply(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: 多个变更批量 apply
+// E2E: batch apply of multiple changes
 // ---------------------------------------------------------------------------
 
 func TestE2EMultipleChangesBatchApply(t *testing.T) {
@@ -482,7 +482,7 @@ func TestE2EMultipleChangesBatchApply(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: Discard 后配置回退
+// E2E: config rollback after Discard
 // ---------------------------------------------------------------------------
 
 func TestE2EChangesDiscardRollback(t *testing.T) {
@@ -527,7 +527,7 @@ func TestE2EChangesDiscardRollback(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: 空变更 Apply / Discard 安全处理
+// E2E: safe handling of Apply / Discard with no changes
 // ---------------------------------------------------------------------------
 
 func TestE2EEmptyChangesSafe(t *testing.T) {
@@ -550,7 +550,7 @@ func TestE2EEmptyChangesSafe(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// E2E: Apply 后配置一致性
+// E2E: config consistency after Apply
 // ---------------------------------------------------------------------------
 
 func TestE2EChangesAppliedConfigConsistency(t *testing.T) {

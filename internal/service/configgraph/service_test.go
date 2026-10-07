@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"moonbridge/internal/config"
-	dbsqlite "moonbridge/internal/extension/db/sqlite"
-	runtimepkg "moonbridge/internal/service/runtime"
+	"providerbridge/internal/config"
+	dbsqlite "providerbridge/internal/extension/db/sqlite"
+	runtimepkg "providerbridge/internal/service/runtime"
 )
 
 func TestBuildGraphIncludesAllConfigSections(t *testing.T) {

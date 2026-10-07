@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/store"
 )
 
 // ---- Offers ----
@@ -15,7 +15,7 @@ import (
 func (r *Router) handleCreateOffer(w http.ResponseWriter, req *http.Request) {
 	providerKey := req.PathValue("key")
 	if providerKey == "" {
-		respondError(w, http.StatusBadRequest, "invalid_key", "无效的 provider key")
+		respondError(w, http.StatusBadRequest, "invalid_key", "invalid provider key")
 		return
 	}
 
@@ -30,11 +30,11 @@ func (r *Router) handleCreateOffer(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 	if body.Model == "" {
-		respondError(w, http.StatusBadRequest, "validation_error", "model 不能为空")
+		respondError(w, http.StatusBadRequest, "validation_error", "model must not be empty")
 		return
 	}
 
@@ -56,7 +56,7 @@ func (r *Router) handleCreateOffer(w http.ResponseWriter, req *http.Request) {
 		After:     string(afterJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
@@ -71,7 +71,7 @@ func (r *Router) handleUpdateOffer(w http.ResponseWriter, req *http.Request) {
 	providerKey := req.PathValue("key")
 	modelSlug := req.PathValue("model")
 	if providerKey == "" || modelSlug == "" {
-		respondError(w, http.StatusBadRequest, "invalid_path", "路径格式无效")
+		respondError(w, http.StatusBadRequest, "invalid_path", "invalid path format")
 		return
 	}
 
@@ -87,7 +87,7 @@ func (r *Router) handleUpdateOffer(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 
@@ -162,7 +162,7 @@ func (r *Router) handleUpdateOffer(w http.ResponseWriter, req *http.Request) {
 		After:     string(afterJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
@@ -177,7 +177,7 @@ func (r *Router) handleDeleteOffer(w http.ResponseWriter, req *http.Request) {
 	providerKey := req.PathValue("key")
 	modelSlug := req.PathValue("model")
 	if providerKey == "" || modelSlug == "" {
-		respondError(w, http.StatusBadRequest, "invalid_path", "路径格式无效")
+		respondError(w, http.StatusBadRequest, "invalid_path", "invalid path format")
 		return
 	}
 
@@ -193,7 +193,7 @@ func (r *Router) handleDeleteOffer(w http.ResponseWriter, req *http.Request) {
 		Before:    string(beforeJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存删除失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage deletion: %v", err))
 		return
 	}
 

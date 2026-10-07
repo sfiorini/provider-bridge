@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/config"
+	"providerbridge/internal/config"
 )
 
 func TestApplyPatchToFileConfigDoesNotHandleBaseRevision(t *testing.T) {

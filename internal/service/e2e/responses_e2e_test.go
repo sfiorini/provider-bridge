@@ -17,9 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/server"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/server"
 )
 
 func TestResponsesTextE2E(t *testing.T) {
@@ -29,7 +29,7 @@ func TestResponsesTextE2E(t *testing.T) {
 	response := postResponses(t, handler, map[string]any{
 		"model":             e2eConfig.ModelAlias,
 		"instructions":      "Reply briefly. Do not use Markdown.",
-		"input":             "Reply with the words Moon Bridge e2e ok.",
+		"input":             "Reply with the words Provider Bridge e2e ok.",
 		"max_output_tokens": 64,
 	})
 
@@ -85,8 +85,8 @@ func TestResponsesFunctionToolE2E(t *testing.T) {
 
 func TestResponsesPromptCacheE2E(t *testing.T) {
 	e2eConfig := loadE2EConfig(t)
-	if os.Getenv("MOONBRIDGE_E2E_CACHE") != "1" {
-		t.Skip("set MOONBRIDGE_E2E_CACHE=1 to run cache-costing e2e")
+	if os.Getenv("PROVIDER_BRIDGE_E2E_CACHE") != "1" {
+		t.Skip("set PROVIDER_BRIDGE_E2E_CACHE=1 to run cache-costing e2e")
 	}
 	handler := newE2EHandlerWithCache(t, e2eConfig.Config, config.CacheConfig{
 		Mode:                     "explicit",
@@ -100,12 +100,12 @@ func TestResponsesPromptCacheE2E(t *testing.T) {
 		MinimumValueScore:        1,
 	})
 
-	longContext := strings.Repeat("Moon Bridge cache prefix stability sentence. ", 900)
+	longContext := strings.Repeat("Provider Bridge cache prefix stability sentence. ", 900)
 	request := map[string]any{
 		"model":             e2eConfig.ModelAlias,
 		"instructions":      longContext,
 		"input":             "Answer with one short sentence.",
-		"prompt_cache_key":  "moonbridge-e2e-cache",
+		"prompt_cache_key":  "providerbridge-e2e-cache",
 		"max_output_tokens": 32,
 	}
 
@@ -140,7 +140,7 @@ func newE2EHandlerWithCache(t *testing.T, cfg config.Config, cacheConfig config.
 
 	return server.New(server.Config{
 		ProviderMgr: providerMgr,
-		AppConfig:   cfg,
+		AppConfig:   config.ServerFromGlobalConfig(&cfg),
 	})
 }
 
@@ -246,7 +246,7 @@ func cacheCreationTokens(response map[string]any) int {
 func loadE2EConfig(t *testing.T) e2eConfig {
 	t.Helper()
 
-	configPath := os.Getenv("MOONBRIDGE_CONFIG")
+	configPath := os.Getenv("PROVIDER_BRIDGE_CONFIG")
 	if configPath == "" {
 		configPath = filepath.Join(findProjectRoot(t), config.DefaultConfigFileName)
 	}
@@ -270,8 +270,8 @@ func e2eModelAlias(routes map[string]config.RouteEntry) (string, error) {
 	if route, ok := routes["e2e-model"]; ok && route.Model != "" {
 		return "e2e-model", nil
 	}
-	if route, ok := routes["moonbridge"]; ok && route.Model != "" {
-		return "moonbridge", nil
+	if route, ok := routes["provider-bridge"]; ok && route.Model != "" {
+		return "provider-bridge", nil
 	}
 
 	aliases := make([]string, 0, len(routes))

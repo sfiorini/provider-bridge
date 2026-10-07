@@ -58,7 +58,7 @@ func TestInitExtensionsWithNil(t *testing.T) {
 
 func TestContextKeyString(t *testing.T) {
 	k := ContextKey{}
-	if k.String() != "moonbridge-session" {
+	if k.String() != "providerbridge-session" {
 		t.Fatalf("unexpected ContextKey string: %s", k.String())
 	}
 }

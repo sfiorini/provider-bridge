@@ -7,8 +7,8 @@ import (
 	"os"
 	"testing"
 
-	"moonbridge/internal/db"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/db"
+	"providerbridge/internal/service/store"
 
 	_ "modernc.org/sqlite"
 )

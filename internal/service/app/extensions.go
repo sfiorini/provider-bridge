@@ -4,15 +4,15 @@ import (
 	"database/sql"
 	"log/slog"
 
-	"moonbridge/internal/config"
-	codextoolproxy "moonbridge/internal/extension/codex_tool_proxy"
-	dbd1 "moonbridge/internal/extension/db/d1"
-	dbsqlite "moonbridge/internal/extension/db/sqlite"
-	deepseekv4 "moonbridge/internal/extension/deepseek_v4"
-	kimiworkaround "moonbridge/internal/extension/kimi_workaround"
-	mbtrics "moonbridge/internal/extension/metrics"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/extension/visual"
+	"providerbridge/internal/config"
+	codextoolproxy "providerbridge/internal/extension/codex_tool_proxy"
+	dbd1 "providerbridge/internal/extension/db/d1"
+	dbsqlite "providerbridge/internal/extension/db/sqlite"
+	deepseekv4 "providerbridge/internal/extension/deepseek_v4"
+	kimiworkaround "providerbridge/internal/extension/kimi_workaround"
+	mbtrics "providerbridge/internal/extension/metrics"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/extension/visual"
 )
 
 // ExtensionOptions controls optional initialization of built-in plugins.

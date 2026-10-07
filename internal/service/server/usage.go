@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/stats"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/stats"
 )
 
 func usageFromAnthropic(protocol string, source string, usage format.CoreUsage, inputIncludesCache bool) plugin.RequestUsage {
@@ -146,7 +146,7 @@ func logBillingUsageLine(requestModel, actualModel string, usage stats.BillingUs
 		summary = sessionStats.Summary()
 	}
 	rwRatio := stats.BillingCacheRWRatio(usage)
-	slog.Info("请求完成",
+	slog.Info("request completed",
 		"request_model", requestModel,
 		"actual_model", actualModel,
 		"input_fresh", usage.FreshInputTokens,

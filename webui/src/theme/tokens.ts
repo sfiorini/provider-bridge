@@ -5,7 +5,7 @@ export const primarySeed = "#7AA7A2";
 type ThemeTokens = Record<string, string>;
 
 /**
- * Material Design 3 (Expressive) colour roles for the Moon Bridge console.
+ * Material Design 3 (Expressive) colour roles for the Provider Bridge console.
  *
  * Built from the teal primary seed (#7AA7A2) and extended with secondary
  * (muted teal), tertiary (cool blue), warning (warm amber) and success (green)

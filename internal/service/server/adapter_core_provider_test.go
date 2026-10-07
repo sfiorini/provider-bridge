@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"testing"
 
-	deepseekv4 "moonbridge/internal/extension/deepseek_v4"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/session"
+	deepseekv4 "providerbridge/internal/extension/deepseek_v4"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/session"
 )
 
 func TestCoreResponseToStreamEventsEmitsTextAndUsage(t *testing.T) {

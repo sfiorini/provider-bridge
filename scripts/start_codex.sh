@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Start Codex CLI using an already-running Moon Bridge server.
-# Requires: start_moonbridge.sh to have been run first (or .moonbridge.env present).
+# Start Codex CLI using an already-running Provider Bridge server.
+# Requires: start_provider-bridge.sh to have been run first (or .provider-bridge.env present).
 set -euo pipefail
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
@@ -43,7 +43,7 @@ fi
 CODEX_HOME_DIR="$(cd "$CODEX_HOME_DIR" && pwd 2>/dev/null || echo "$CODEX_HOME_DIR")"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd 2>/dev/null || echo "$PROJECT_DIR")"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="${ROOT_DIR}/.moonbridge.env"
+ENV_FILE="${ROOT_DIR}/.provider-bridge.env"
 LOG_FILE="${ROOT_DIR}/logs/codex.log"
 
 source "${ROOT_DIR}/scripts/lib/common.sh"
@@ -52,15 +52,15 @@ require_command codex
 mkdir -p "$CODEX_HOME_DIR" "$(dirname "$LOG_FILE")"
 
 load_env_file "$ENV_FILE"
-MODE="${MOONBRIDGE_MODE:-}"
+MODE="${PROVIDER_BRIDGE_MODE:-}"
 validate_mode "$MODE" Transform CaptureResponse
 
-SERVER_BIN="${MOONBRIDGE_SERVER_BIN:-}"
-CONFIG_FILE="${MOONBRIDGE_CONFIG_FILE:-}"
+SERVER_BIN="${PROVIDER_BRIDGE_SERVER_BIN:-}"
+CONFIG_FILE="${PROVIDER_BRIDGE_CONFIG_FILE:-}"
 
-verify_moonbridge_alive
+verify_providerbridge_alive
 
-MODEL_ALIAS="${MOONBRIDGE_CODEX_MODEL:-${MOONBRIDGE_DEFAULT_MODEL:-}}"
+MODEL_ALIAS="${PROVIDER_BRIDGE_CODEX_MODEL:-${PROVIDER_BRIDGE_DEFAULT_MODEL:-}}"
 
 
 MODEL_ALIAS="${MODEL_ALIAS##*/}"

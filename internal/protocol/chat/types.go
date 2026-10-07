@@ -1,4 +1,4 @@
-// Package chat implements the OpenAI Chat Completions ProviderAdapter for MoonBridge.
+// Package chat implements the OpenAI Chat Completions ProviderAdapter for ProviderBridge.
 package chat
 
 import "encoding/json"

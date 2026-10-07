@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"sync"
 
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 )
 
 // ClientProtocolID is the registry key for the inbound Anthropic Messages adapter.

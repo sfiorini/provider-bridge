@@ -1,4 +1,4 @@
-// Package chat implements the OpenAI Chat Completions ProviderAdapter for MoonBridge.
+// Package chat implements the OpenAI Chat Completions ProviderAdapter for ProviderBridge.
 //
 // ChatProviderAdapter converts between Core format and OpenAI Chat Completions
 // REST API DTOs. It implements format.ProviderAdapter (non-streaming) and
@@ -12,8 +12,8 @@ import (
 	"strings"
 	"sync"
 
-	"moonbridge/internal/extension/codextool"
-	"moonbridge/internal/format"
+	"providerbridge/internal/extension/codextool"
+	"providerbridge/internal/format"
 )
 
 // ============================================================================

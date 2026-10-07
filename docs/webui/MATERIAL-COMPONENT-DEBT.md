@@ -43,6 +43,6 @@ This document tracks webui controls that violate the workspace rule: common cont
 - Evidence for outlined text-field/select migrations must verify official Material API usage, not just host-element presence: non-empty Material label, no replacement external label, slotted text-field icons, built-in select trailing affordance, and intentional `spellcheck` serialization.
 - Visual verification must include browser-rendered screenshots for pages touched by each migration. Major visual drift means the task is not complete even if tests pass.
 - Visual verification for outlined fields/selects must include browser-rendered empty, focused, filled, and error or help-icon states where applicable. Select evidence must include closed and opened states.
-- Store screenshot and report evidence under `docs/superpowers/reports/` unless the user explicitly asks to commit evidence artifacts.
+- Visual evidence (screenshots, reports) must be attached to the change request and is not committed to the repository unless the user explicitly asks for committed evidence artifacts.
 - Do not style Material Web internals or shadow DOM classes. Use public CSS custom properties and wrapper layout only.
 - Do not add fallback markup that recreates the replaced custom control.

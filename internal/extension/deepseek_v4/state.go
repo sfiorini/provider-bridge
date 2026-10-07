@@ -8,11 +8,11 @@ import (
 	"strings"
 	"sync"
 
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
 )
 
-const persistedThinkingSummaryPrefix = "moonbridge:deepseek_v4_thinking:v1:"
+const persistedThinkingSummaryPrefix = "providerbridge:deepseek_v4_thinking:v1:"
 
 type persistedThinkingSummary struct {
 	Thinking  string `json:"thinking"`

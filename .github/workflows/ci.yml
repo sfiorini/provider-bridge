@@ -42,24 +42,24 @@ jobs:
         include:
           - goos: linux
             goarch: amd64
-            package: moonbridge_linux_amd64.tar.gz
+            package: providerbridge_linux_amd64.tar.gz
           - goos: linux
             goarch: arm64
-            package: moonbridge_linux_arm64.tar.gz
+            package: providerbridge_linux_arm64.tar.gz
           - goos: darwin
             goarch: amd64
-            package: moonbridge_darwin_amd64.tar.gz
+            package: providerbridge_darwin_amd64.tar.gz
           - goos: darwin
             goarch: arm64
-            package: moonbridge_darwin_arm64.tar.gz
+            package: providerbridge_darwin_arm64.tar.gz
           - goos: windows
             goarch: amd64
-            binary: moonbridge.exe
-            package: moonbridge_windows_amd64.zip
+            binary: providerbridge.exe
+            package: providerbridge_windows_amd64.zip
           - goos: windows
             goarch: arm64
-            binary: moonbridge.exe
-            package: moonbridge_windows_arm64.zip
+            binary: providerbridge.exe
+            package: providerbridge_windows_arm64.zip
 
     steps:
       - name: Checkout
@@ -76,15 +76,15 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          BINARY: ${{ matrix.binary || 'moonbridge' }}
+          BINARY: ${{ matrix.binary || 'providerbridge' }}
         run: |
           mkdir -p build dist
-          go build -trimpath -ldflags="-s -w" -o "build/${BINARY}" ./cmd/moonbridge
+          go build -trimpath -ldflags="-s -w" -o "build/${BINARY}" ./cmd/providerbridge
 
       - name: Package binary
         env:
           GOOS: ${{ matrix.goos }}
-          BINARY: ${{ matrix.binary || 'moonbridge' }}
+          BINARY: ${{ matrix.binary || 'providerbridge' }}
           PACKAGE: ${{ matrix.package }}
         run: |
           if [ "${GOOS}" = "windows" ]; then
@@ -124,7 +124,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "${TAG}" --draft --title "${TAG}" --notes "待补充 release notes" --verify-tag
+          gh release create "${TAG}" --draft --title "${TAG}" --notes "Release notes TBD" --verify-tag
 
           find dist -type f -name '*.tar.gz' -o -name '*.zip' | while read asset; do
             echo "Uploading: ${asset}"

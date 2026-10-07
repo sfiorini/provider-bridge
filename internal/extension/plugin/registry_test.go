@@ -3,11 +3,11 @@ package plugin_test
 import (
 	"context"
 	"encoding/json"
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 	"testing"
 
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/protocol/openai"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/protocol/openai"
 )
 
 // --- Test helpers ---

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"moonbridge/internal/config"
-	dbsqlite "moonbridge/internal/extension/db/sqlite"
-	"moonbridge/internal/extension/plugin"
+	"providerbridge/internal/config"
+	dbsqlite "providerbridge/internal/extension/db/sqlite"
+	"providerbridge/internal/extension/plugin"
 )
 
 func TestName(t *testing.T) {
@@ -82,7 +82,7 @@ func TestOpenCreatesParentDirectories(t *testing.T) {
 	p := dbsqlite.NewPlugin()
 	wal := false
 	dir := filepath.Join(t.TempDir(), "nested", "data")
-	dbPath := filepath.Join(dir, "moonbridge.db")
+	dbPath := filepath.Join(dir, "provider-bridge.db")
 	cfg := &dbsqlite.Config{
 		Path: dbPath,
 		WAL:  &wal,

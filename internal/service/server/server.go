@@ -10,25 +10,25 @@ import (
 	"sync"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
-	"moonbridge/internal/logger"
-	"moonbridge/internal/protocol/chat"
-	"moonbridge/internal/protocol/google"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/api"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/service/runtime"
-	"moonbridge/internal/service/stats"
-	"moonbridge/internal/service/store"
-	"moonbridge/internal/service/webui"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/google"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/api"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/service/runtime"
+	"providerbridge/internal/service/stats"
+	"providerbridge/internal/service/store"
+	"providerbridge/internal/service/webui"
 
-	"moonbridge/internal/service/server/session"
-	"moonbridge/internal/service/server/trace"
-	"moonbridge/internal/service/server/usage"
+	"providerbridge/internal/service/server/session"
+	"providerbridge/internal/service/server/trace"
+	"providerbridge/internal/service/server/usage"
 
-	mbtrace "moonbridge/internal/service/trace"
+	mbtrace "providerbridge/internal/service/trace"
 )
 
 // ChatClient is the interface for OpenAI-chat protocol clients.
@@ -209,7 +209,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			writer.Header().Set("Content-Type", "application/json")
 			writer.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(writer).Encode(openai.ErrorResponse{Error: openai.ErrorObject{
-				Message: "未提供有效的认证令牌，请在 Authorization header 中使用 Bearer 方案",
+				Message: "missing or invalid bearer token; use the Authorization header with a Bearer scheme",
 				Type:    "authentication_error",
 				Code:    "invalid_auth",
 			}})
@@ -226,7 +226,7 @@ func isConsoleAssetPath(path string) bool {
 func (s *Server) handleModels(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		writeOpenAIError(writer, http.StatusMethodNotAllowed, openai.ErrorResponse{Error: openai.ErrorObject{
-			Message: "仅支持 GET 请求",
+			Message: "only GET requests are supported",
 			Type:    "invalid_request_error",
 			Code:    "method_not_allowed",
 		}})
@@ -470,14 +470,14 @@ func (s *Server) filterCandidatesByInput(candidates []provider.ProviderCandidate
 		meta, ok := pm.ModelMetaFor(c.UpstreamModel, c.ProviderKey)
 		if !ok || !hasModalityImage(meta.InputModalities) {
 			removedCount++
-			logger.L().Debug("过滤掉不支持图片的提供商候选", "provider", c.ProviderKey, "model", c.UpstreamModel)
+			logger.L().Debug("filtered image-incapable provider candidate", "provider", c.ProviderKey, "model", c.UpstreamModel)
 			continue
 		}
 		filtered = append(filtered, c)
 	}
 	var reason string
 	if removedCount > 0 {
-		reason = fmt.Sprintf("请求包含图片输入，已过滤 %d 个不支持图片的提供商候选", removedCount)
+		reason = fmt.Sprintf("request contains image input; filtered %d provider candidates without image support", removedCount)
 	}
 	return filtered, reason
 }
@@ -489,6 +489,17 @@ func hasModalityImage(modalities []string) bool {
 		}
 	}
 	return false
+}
+
+// candidateSupportsImage reports whether the candidate's upstream model can
+// natively consume image inputs. Missing metadata means NOT image-capable
+// (mirrors filterCandidatesByInput), so such candidates get visual assist.
+func (s *Server) candidateSupportsImage(c provider.ProviderCandidate) bool {
+	pm := s.activeProviderManager()
+	if pm == nil {
+		return false
+	}
+	return pm.ModelSupportsImage(c.ProviderKey, c.UpstreamModel)
 }
 
 func newDefaultSessionManager(cfg Config) session.Manager {

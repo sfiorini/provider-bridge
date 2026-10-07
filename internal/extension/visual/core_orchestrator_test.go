@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 )
 
 // fakeCoreUpstream implements CoreProvider for testing the core orchestrator.
@@ -596,7 +596,7 @@ func TestPrepareCoreRequestForVisual_StripsBase64(t *testing.T) {
 		Messages: []format.CoreMessage{{
 			Role: "user",
 			Content: []format.CoreContentBlock{
-				{Type: "text", Text: "描述图片"},
+				{Type: "text", Text: "describe the image"},
 				{Type: "image", ImageData: "verylongbase64data", MediaType: "image/png"},
 			},
 		}},
@@ -764,7 +764,7 @@ func TestCoreOrchestrator_ImageStrippedAcrossMultipleTurns(t *testing.T) {
 		Messages: []format.CoreMessage{{
 			Role: "user",
 			Content: []format.CoreContentBlock{
-				{Type: "text", Text: "描述这些图片"},
+				{Type: "text", Text: "describe these images"},
 				{Type: "image", ImageData: "b64_image_1", MediaType: "image/png"},
 				{Type: "image", ImageData: "b64_image_2", MediaType: "image/jpeg"},
 			},

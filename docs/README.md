@@ -1,23 +1,62 @@
-# Moon Bridge 文档
+# Provider Bridge Documentation
 
-Moon Bridge 是一个将 OpenAI Responses API（Codex CLI 原生协议）转换为 Anthropic Messages API 请求的透明代理服务器。它使 Codex CLI 用户可以接入任何兼容 Anthropic API 的 LLM 提供商，同时保留完整的响应流式传输、缓存、工具调用和 Web Search 能力。
+Provider Bridge is a self-hosted, multi-protocol AI model gateway. One process,
+one config, and one token put every AI consumer in the homelab in front of every
+model provider. Consumers keep speaking their native wire protocol — OpenAI
+Responses, Anthropic Messages, or Chat Completions — and the bridge translates
+all of them through one internal representation ("Core") to any upstream
+provider protocol.
 
-## 文档目录
+The tables below index every document in this directory. Deeper topics that are
+still being written are marked **planned**.
 
-- **架构与设计**：项目整体架构、工作模式、数据流
-- **开发约定**：Go 包结构、编码规范、测试准则、配置演进策略
-- **API 接口**：对外暴露的 HTTP API 参考（Responses API 端点、模型列举端点）
-- **Extension 系统**：Plugin 接口定义、能力类型清单、Server/持久化集成、实现 Demo、注册与生命周期
-- **现有 Extension 一览**：deepseek_v4、visual、注入式 Web Search 模块，以及 dev 分支开发中的持久化/metrics 能力说明
-- **配置迁移**：旧配置迁移到当前格式的脚本说明
+## Start here
 
-## 快速导航
+| Document | What it covers |
+|----------|----------------|
+| [GETTING-STARTED.md](GETTING-STARTED.md) | Five-minute onboarding: build, starter config, first request, next steps |
+| [COOKBOOK.md](COOKBOOK.md) | Task-oriented recipes (macOS/Linux and Windows command pairs): first chat, Codex CLI, provider swap, reasoning, images, web search, cache, troubleshooting |
+| [CONFIGURATION.md](CONFIGURATION.md) | Full YAML reference: modes, server, models, providers, routes, web search, cache, extensions, proxy, CLI flags |
+| [CONFIG-MIGRATION.md](CONFIG-MIGRATION.md) | Migrating a legacy (v4) config to the current v5 shape |
 
-| 文档 | 说明 |
-|------|------|
-| [系统架构](architecture.md) | 四层架构、三种运行模式、请求生命周期 |
-| [开发约定](development-conventions.md) | 包结构、编码规范、测试、配置演进 |
-| [API 接口](api.md) | HTTP 端点、请求/响应格式、错误处理 |
-| [Extension 系统](extension-system.md) | Plugin 接口、能力类型、Server/持久化集成、注册流程、Demo 实现 |
-| [Extension 一览](extensions-overview.md) | deepseek_v4、visual、注入式 Web Search 模块，以及开发中的持久化/metrics 能力说明 |
-| [配置迁移](config-migration.md) | 旧配置迁移脚本使用说明 |
+## Core reference
+
+| Document | What it covers |
+|----------|----------------|
+| [API.md](API.md) | HTTP API reference: inbound endpoints, streaming shapes, `/v1/models`, management API, config-graph API, errors, sessions |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Four-layer architecture, the three inbound request paths, Core IR, adapter registry, cross-cutting machinery |
+| [EXTENSION-SYSTEM.md](EXTENSION-SYSTEM.md) | Plugin interfaces, capability types, the registry, server/persistence integration, lifecycle |
+| [EXTENSIONS.md](EXTENSIONS.md) | Catalogue of shipped extensions: deepseek_v4, visual, web search injection, kimi_workaround, codex, databases, metrics |
+| [WEB-SEARCH.md](WEB-SEARCH.md) | Server-side web-search injection: config scopes, support modes, execution loops, startup-only resolution |
+| [CONSUMERS.md](CONSUMERS.md) | Consumer matrix: Codex, Claude Code, LibreChat, Open WebUI, Affiora — wire protocol, connection target, per-app config |
+
+## Development
+
+| Document | What it covers |
+|----------|----------------|
+| [DEVELOPMENT.md](DEVELOPMENT.md) | Dev setup, project tree, build, Web Console development, adding a provider or inbound adapter |
+| [DEVELOPMENT-CONVENTIONS.md](DEVELOPMENT-CONVENTIONS.md) | Package layout, dependency direction, naming, error handling, logging, config evolution, testing rules |
+| [TESTING.md](TESTING.md) | Test tiers (unit, protocol e2e, service e2e, management API) and the live wire-shape verification matrix |
+| [webui/MATERIAL-COMPONENT-DEBT.md](webui/MATERIAL-COMPONENT-DEBT.md) | Web UI Material-Web migration backlog and review requirements |
+
+## Deployment
+
+| Document | What it covers |
+|----------|----------------|
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Binary, systemd, nginx, Docker/compose, Cloudflare Workers, config management, homelab gotchas |
+
+### Deployment runbooks
+
+| Document | What it covers |
+|----------|----------------|
+| [deploy/mini/PATCHES.md](../deploy/mini/PATCHES.md) | Deployment runbook for the mini host, including rollback |
+| [deploy/mini/update.sh](../deploy/mini/update.sh) | Pull the repo and redeploy the mini container |
+| [deploy/mini/codex_regen.sh](../deploy/mini/codex_regen.sh) | Regenerate Codex `config.toml` and `models_catalog.json` from the bridge |
+| [deploy/mini/MODEL-METADATA-RUNBOOK.md](../deploy/mini/MODEL-METADATA-RUNBOOK.md) | Reconcile live model metadata with the verified `INVENTORY.md` values |
+| [deploy/mini/RENAME-CUTOVER.md](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (legacy name → `providerbridge`) |
+
+## Related
+
+- [Model inventory](../INVENTORY.md) — every deployed model slug with verified
+  context window, max output tokens, input modalities, and verification status.
+- [Contributing](../CONTRIBUTING.md) — contribution flow and branch policy.

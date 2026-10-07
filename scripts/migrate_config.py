@@ -3,18 +3,21 @@
 # requires-python = ">=3.10"
 # dependencies = ["ruamel.yaml"]
 # ///
-"""Migrate MoonBridge config.yml to the current provider/routes format.
+"""Migrate Provider Bridge config.yml to the current provider/routes format.
 
 Old model format (per-provider):
   provider:
     providers:
       deepseek:
         models:
-          moonbridge:            # alias as key
+          legacy-alias:          # alias as key (the pre-rename default alias)
             name: deepseek-v4-pro  # upstream model name
             context_window: 1000000
             pricing:
               input_price: 2
+
+Note: the alias key is arbitrary — any legacy alias (including the pre-rename
+default) still resolves, so only the key name, not its value, changes here.
 
 New format:
   provider:
@@ -36,7 +39,7 @@ New format:
             pricing:
               input_price: 2
     routes:
-      moonbridge:
+      providerbridge:
         to: "deepseek/deepseek-v4-pro"
 
 Old DeepSeek V4 extension format (global):
@@ -634,7 +637,7 @@ def provider_looks_like_deepseek(provider_key: str, pdef: dict) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Migrate MoonBridge config to new routes format.")
+    parser = argparse.ArgumentParser(description="Migrate Provider Bridge config to new routes format.")
     parser.add_argument("input", nargs="?", default="config.yml", help="Input config file (default: config.yml)")
     parser.add_argument("output", nargs="?", default=None, help="Output file (default: overwrite input)")
     parser.add_argument("--dry-run", action="store_true", help="Print result to stdout without writing")

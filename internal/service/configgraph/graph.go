@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"moonbridge/internal/config"
+	"providerbridge/internal/config"
 )
 
 const (

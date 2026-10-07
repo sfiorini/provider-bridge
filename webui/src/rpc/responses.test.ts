@@ -9,13 +9,13 @@ describe("responses RPC client", () => {
 
   test("lists models from /v1/models", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ models: [{ slug: "moonbridge", name: "Moon Bridge", provider: "route" }] }), {
+      new Response(JSON.stringify({ models: [{ slug: "providerbridge", name: "Provider Bridge", provider: "route" }] }), {
         headers: { "Content-Type": "application/json" }
       })
     );
 
     await expect(listResponseModels()).resolves.toEqual({
-      models: [{ slug: "moonbridge", name: "Moon Bridge", provider: "route" }]
+      models: [{ slug: "providerbridge", name: "Provider Bridge", provider: "route" }]
     });
     expect(fetchMock.mock.calls[0][0]).toBe("/v1/models");
   });
@@ -27,12 +27,12 @@ describe("responses RPC client", () => {
       })
     );
 
-    await createResponse({ model: "moonbridge", input: "ping" });
+    await createResponse({ model: "providerbridge", input: "ping" });
 
     expect(fetchMock.mock.calls[0][0]).toBe("/v1/responses");
     expect(fetchMock.mock.calls[0][1]).toMatchObject({
       method: "POST",
-      body: JSON.stringify({ model: "moonbridge", input: "ping", stream: false })
+      body: JSON.stringify({ model: "providerbridge", input: "ping", stream: false })
     });
   });
 

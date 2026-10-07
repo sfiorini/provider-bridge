@@ -8,17 +8,17 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/moonbridge ./cmd/moonbridge
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/providerbridge ./cmd/providerbridge
 
 FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 
-COPY --from=builder /out/moonbridge /app/moonbridge
+COPY --from=builder /out/providerbridge /app/providerbridge
 COPY config.example.yml /app/config.example.yml
 
 EXPOSE 38440
 
 USER nonroot:nonroot
-ENTRYPOINT ["/app/moonbridge"]
+ENTRYPOINT ["/app/providerbridge"]
 CMD ["-config", "/config/config.yml", "-addr", "0.0.0.0:38440"]

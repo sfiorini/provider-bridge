@@ -10,16 +10,17 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/protocol/chat"
-	"moonbridge/internal/protocol/openai"
-	"moonbridge/internal/service/provider"
-	"moonbridge/internal/extension/websearchinjected"
-	visualpkg "moonbridge/internal/extension/visual"
-	"moonbridge/internal/session"
+	"providerbridge/internal/config"
+	visualpkg "providerbridge/internal/extension/visual"
+	"providerbridge/internal/extension/websearchinjected"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
+	"providerbridge/internal/session"
 )
 
 // coreUpstreamOutcome carries the result of upstream execution: either a
@@ -115,6 +116,14 @@ func (s *Server) executeAnthropicUpstream(
 		return nil, fmt.Errorf("unexpected anthropic upstream request type %T", upstreamAny)
 	}
 
+	// Image-capability gate shared by both branches below: only requests
+	// whose images the upstream cannot consume natively get visual assist
+	// (or the strip fallback).
+	hasImage := coreRequestHasImage(coreReq)
+	supportsImg := s.candidateSupportsImage(outcome.Preferred)
+	needsAssist := hasImage && !supportsImg
+	visRan := false
+
 	if outcome.WSMode == "enabled" {
 		injectAnthropicWebSearch(anthReq)
 	}
@@ -142,11 +151,12 @@ func (s *Server) executeAnthropicUpstream(
 			return nil, fmt.Errorf("anthropic stream adapter not available")
 		}
 
-		// Visual orchestrator: for image inputs on vision-configured models,
-		// run non-streaming orchestration and synthesize a Core stream.
-		hasImage := coreRequestHasImage(coreReq)
-		if hasImage && s.pluginRegistry != nil && s.runtime != nil {
+		// Visual orchestrator: for image inputs the upstream cannot consume
+		// natively, run non-streaming orchestration and synthesize a Core
+		// stream.
+		if needsAssist && s.pluginRegistry != nil && s.runtime != nil {
 			if visProv := s.wrapWithVisual(ctx, outcome.ModelAlias, outcome.Preferred, outcome.Adapter, finalizeAnthropic); visProv != nil {
+				visRan = true
 				coreResp, err := visProv.CreateCore(ctx, coreReq)
 				if err != nil {
 					return nil, fmt.Errorf("visual orchestration failed: %w", err)
@@ -171,14 +181,11 @@ func (s *Server) executeAnthropicUpstream(
 			return nil, fmt.Errorf("provider %q does not support anthropic streaming", outcome.Preferred.ProviderKey)
 		}
 
-		// Strip image blocks when the model routes images through the visual
-		// orchestrator, mirroring the Responses streaming path.
-		if hasImage && s.pluginRegistry != nil && s.runtime != nil {
-			cfgV := s.runtime.Current().Config
-			if visCfg, visOk := visualpkg.ConfigForModelFromResolvedConfig(cfgV, outcome.ModelAlias); visOk && visCfg.Provider != "" && visCfg.Model != "" {
-				stripped, _ := visualpkg.StripImagesFromAnthropic(*anthReq)
-				anthReq = &stripped
-			}
+		if needsAssist && !visRan {
+			slog.Default().Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+				"provider", outcome.Preferred.ProviderKey, "model", outcome.Preferred.UpstreamModel)
+			stripped, _ := visualpkg.StripImagesFromAnthropic(*anthReq)
+			anthReq = &stripped
 		}
 
 		stream, err := acc.AnthropicClient().StreamMessage(ctx, *anthReq)
@@ -206,19 +213,29 @@ func (s *Server) executeAnthropicUpstream(
 		}
 	}
 
-	if visProv := s.wrapWithVisual(ctx, outcome.ModelAlias, outcome.Preferred, outcome.Adapter, finalizeAnthropic); visProv != nil {
-		coreResp, err := visProv.CreateCore(ctx, coreReq)
-		if err != nil {
-			return nil, fmt.Errorf("visual orchestration failed: %w", err)
-		}
-		if outcome.WSInjected {
-			coreResp, err = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+	if needsAssist {
+		if visProv := s.wrapWithVisual(ctx, outcome.ModelAlias, outcome.Preferred, outcome.Adapter, finalizeAnthropic); visProv != nil {
+			visRan = true
+			coreResp, err := visProv.CreateCore(ctx, coreReq)
 			if err != nil {
-				return nil, fmt.Errorf("visual search orchestration failed: %w", err)
+				return nil, fmt.Errorf("visual orchestration failed: %w", err)
 			}
+			if outcome.WSInjected {
+				coreResp, err = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+				if err != nil {
+					return nil, fmt.Errorf("visual search orchestration failed: %w", err)
+				}
+			}
+			outcome.CoreResp = coreResp
+			return outcome, nil
 		}
-		outcome.CoreResp = coreResp
-		return outcome, nil
+	}
+
+	if needsAssist && !visRan {
+		slog.Default().Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+			"provider", outcome.Preferred.ProviderKey, "model", outcome.Preferred.UpstreamModel)
+		stripped, _ := visualpkg.StripImagesFromAnthropic(*anthReq)
+		anthReq = &stripped
 	}
 
 	rawResp, err := effectiveProvider.CreateMessage(ctx, *anthReq)
@@ -280,6 +297,14 @@ func (s *Server) executeChatUpstream(
 	visualCandidate := outcome.Preferred
 	visualCandidate.Client = &chatProviderClient{c: chatClient}
 
+	// Image-capability gate shared by both branches below: only requests
+	// whose images the upstream cannot consume natively get visual assist
+	// (or the strip fallback).
+	hasImage := coreRequestHasImage(coreReq)
+	supportsImg := s.candidateSupportsImage(outcome.Preferred)
+	needsAssist := hasImage && !supportsImg
+	visRan := false
+
 	if coreReq.Stream {
 		providerStream, ok := s.adapterRegistry.GetProviderStream(config.ProtocolOpenAIChat)
 		if !ok {
@@ -287,8 +312,9 @@ func (s *Server) executeChatUpstream(
 		}
 
 		// Visual orchestrator path.
-		if s.pluginRegistry != nil && s.runtime != nil {
+		if needsAssist && s.pluginRegistry != nil && s.runtime != nil {
 			if visProv := s.wrapWithVisual(ctx, outcome.ModelAlias, visualCandidate, outcome.Adapter, finalizeChat); visProv != nil {
+				visRan = true
 				coreResp, err := visProv.CreateCore(ctx, coreReq)
 				if err != nil {
 					return nil, fmt.Errorf("chat visual orchestration failed: %w", err)
@@ -302,6 +328,13 @@ func (s *Server) executeChatUpstream(
 				outcome.CoreEvents = coreResponseToCoreStream(ctx, coreResp)
 				return outcome, nil
 			}
+		}
+
+		if needsAssist && !visRan {
+			slog.Default().Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+				"provider", outcome.Preferred.ProviderKey, "model", outcome.Preferred.UpstreamModel)
+			strippedReq, _ := visualpkg.StripImagesFromChat(*chatReq)
+			chatReq = &strippedReq
 		}
 
 		var chatStream <-chan chat.ChatStreamChunk
@@ -324,19 +357,29 @@ func (s *Server) executeChatUpstream(
 	}
 
 	// Non-streaming.
-	if visProv := s.wrapWithVisual(ctx, outcome.ModelAlias, visualCandidate, outcome.Adapter, finalizeChat); visProv != nil {
-		coreResp, err := visProv.CreateCore(ctx, coreReq)
-		if err != nil {
-			return nil, fmt.Errorf("chat visual orchestration failed: %w", err)
-		}
-		if outcome.WSInjected {
-			coreResp, err = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+	if needsAssist {
+		if visProv := s.wrapWithVisual(ctx, outcome.ModelAlias, visualCandidate, outcome.Adapter, finalizeChat); visProv != nil {
+			visRan = true
+			coreResp, err := visProv.CreateCore(ctx, coreReq)
 			if err != nil {
-				return nil, fmt.Errorf("visual search orchestration failed: %w", err)
+				return nil, fmt.Errorf("chat visual orchestration failed: %w", err)
 			}
+			if outcome.WSInjected {
+				coreResp, err = executeCoreSearchLoop(ctx, visProv, coreReq, coreResp, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+				if err != nil {
+					return nil, fmt.Errorf("visual search orchestration failed: %w", err)
+				}
+			}
+			outcome.CoreResp = coreResp
+			return outcome, nil
 		}
-		outcome.CoreResp = coreResp
-		return outcome, nil
+	}
+
+	if needsAssist && !visRan {
+		slog.Default().Warn("visual assist unavailable; stripping images before forwarding to a text-only upstream",
+			"provider", outcome.Preferred.ProviderKey, "model", outcome.Preferred.UpstreamModel)
+		strippedReq, _ := visualpkg.StripImagesFromChat(*chatReq)
+		chatReq = &strippedReq
 	}
 
 	var chatResp *chat.ChatResponse
@@ -370,4 +413,3 @@ func (s *Server) executeChatUpstream(
 
 	return outcome, nil
 }
-

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/service/store"
+	"providerbridge/internal/config"
+	"providerbridge/internal/service/store"
 )
 
 // ---- Settings ----
@@ -34,7 +34,7 @@ func (r *Router) handlePutDefaults(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 
@@ -51,7 +51,7 @@ func (r *Router) handlePutDefaults(w http.ResponseWriter, req *http.Request) {
 		After:     string(defaultsJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
@@ -87,7 +87,7 @@ func (r *Router) handlePutWebSearch(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 
@@ -117,7 +117,7 @@ func (r *Router) handlePutWebSearch(w http.ResponseWriter, req *http.Request) {
 		After:     string(wsJSON),
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
@@ -142,18 +142,18 @@ func (r *Router) handleListExtensions(w http.ResponseWriter, req *http.Request) 
 func (r *Router) handleGetExtension(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
 	if name == "" {
-		respondError(w, http.StatusBadRequest, "invalid_name", "无效的 extension name")
+		respondError(w, http.StatusBadRequest, "invalid_name", "invalid extension name")
 		return
 	}
 
 	if r.registry == nil {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("extension %q 不存在", name))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("extension %q does not exist", name))
 		return
 	}
 
 	ext := r.registry.Plugin(name)
 	if ext == nil {
-		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("extension %q 不存在", name))
+		respondError(w, http.StatusNotFound, "not_found", fmt.Sprintf("extension %q does not exist", name))
 		return
 	}
 
@@ -164,13 +164,13 @@ func (r *Router) handleGetExtension(w http.ResponseWriter, req *http.Request) {
 func (r *Router) handlePutExtension(w http.ResponseWriter, req *http.Request) {
 	name := req.PathValue("name")
 	if name == "" {
-		respondError(w, http.StatusBadRequest, "invalid_name", "无效的 extension name")
+		respondError(w, http.StatusBadRequest, "invalid_name", "invalid extension name")
 		return
 	}
 
 	var body map[string]any
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 
@@ -183,7 +183,7 @@ func (r *Router) handlePutExtension(w http.ResponseWriter, req *http.Request) {
 		After:     `{"` + name + `":` + string(extJSON) + `}`,
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage change: %v", err))
 		return
 	}
 
@@ -209,18 +209,18 @@ func (r *Router) handleGetConfigExport(w http.ResponseWriter, req *http.Request)
 
 	// Require explicit X-Confirm-Secrets header for plaintext secret export.
 	if includeSecrets && req.Header.Get("X-Confirm-Secrets") != "true" {
-		respondError(w, http.StatusBadRequest, "confirmation_required", "导出包含 secrets 需要设置 X-Confirm-Secrets: true header")
+		respondError(w, http.StatusBadRequest, "confirmation_required", "exporting secrets requires the X-Confirm-Secrets: true header")
 		return
 	}
 
 	yamlBytes, err := r.store.ExportYAML(includeSecrets)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "export_error", fmt.Sprintf("导出失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "export_error", fmt.Sprintf("export failed: %v", err))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/x-yaml")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=moonbridge-config-%s.yml", time.Now().Format("20060102-150405")))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=providerbridge-config-%s.yml", time.Now().Format("20060102-150405")))
 	w.Write(yamlBytes)
 }
 
@@ -230,18 +230,18 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 		YAML string `json:"yaml"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 	if body.YAML == "" {
-		respondError(w, http.StatusBadRequest, "validation_error", "yaml 不能为空")
+		respondError(w, http.StatusBadRequest, "validation_error", "yaml must not be empty")
 		return
 	}
 
 	// Parse the YAML via LoadFromYAML which validates and returns a full Config.
 	cfg, err := config.LoadFromYAML([]byte(body.YAML))
 	if err != nil {
-		respondError(w, http.StatusBadRequest, "parse_error", fmt.Sprintf("YAML 解析失败: %v", err))
+		respondError(w, http.StatusBadRequest, "parse_error", fmt.Sprintf("failed to parse YAML: %v", err))
 		return
 	}
 
@@ -263,7 +263,7 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 			After:     string(afterJSON),
 		})
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存 provider %q 失败: %v", key, err))
+			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage provider %q: %v", key, err))
 			return
 		}
 		changes = append(changes, map[string]any{
@@ -291,7 +291,7 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 				After:     string(offerJSON),
 			})
 			if err != nil {
-				respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存 offer %q 失败: %v", key+"/"+offer.Model, err))
+				respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage offer %q: %v", key+"/"+offer.Model, err))
 				return
 			}
 			changes = append(changes, map[string]any{
@@ -320,7 +320,7 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 			After:     string(afterJSON),
 		})
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存 model %q 失败: %v", slug, err))
+			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage model %q: %v", slug, err))
 			return
 		}
 		changes = append(changes, map[string]any{
@@ -344,7 +344,7 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 			After:     string(afterJSON),
 		})
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存 route %q 失败: %v", alias, err))
+			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage route %q: %v", alias, err))
 			return
 		}
 		changes = append(changes, map[string]any{
@@ -368,7 +368,7 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 			After:     string(defaultsJSON),
 		})
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存 defaults 失败: %v", err))
+			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage defaults: %v", err))
 			return
 		}
 		changes = append(changes, map[string]any{
@@ -394,7 +394,7 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 			After:     string(wsJSON),
 		})
 		if err != nil {
-			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("暂存 web_search 失败: %v", err))
+			respondError(w, http.StatusInternalServerError, "stage_error", fmt.Sprintf("failed to stage web_search: %v", err))
 			return
 		}
 		changes = append(changes, map[string]any{
@@ -407,7 +407,7 @@ func (r *Router) handlePostConfigImport(w http.ResponseWriter, req *http.Request
 	respondJSON(w, http.StatusOK, map[string]any{
 		"changes": changes,
 		"count":   len(changes),
-		"message": fmt.Sprintf("配置已通过校验，已创建 %d 个待应用变更，请调用 POST /changes/apply 使其生效", len(changes)),
+		"message": fmt.Sprintf("config validated; %d pending changes created, call POST /changes/apply to apply", len(changes)),
 	})
 }
 
@@ -417,11 +417,11 @@ func (r *Router) handlePostConfigValidate(w http.ResponseWriter, req *http.Reque
 		ConfigJSON string `json:"config"`
 	}
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "无效的 JSON 请求体")
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
 	if body.ConfigJSON == "" {
-		respondError(w, http.StatusBadRequest, "validation_error", "config 不能为空")
+		respondError(w, http.StatusBadRequest, "validation_error", "config must not be empty")
 		return
 	}
 
@@ -449,7 +449,7 @@ func (r *Router) handleListChanges(w http.ResponseWriter, req *http.Request) {
 	}
 	changes, err := r.store.ListPendingChanges()
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "list_error", fmt.Sprintf("查询变更列表失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "list_error", fmt.Sprintf("failed to list changes: %v", err))
 		return
 	}
 
@@ -463,25 +463,25 @@ func (r *Router) handlePostChangesApply(w http.ResponseWriter, req *http.Request
 		return r.runtime.Reload(*cfg)
 	})
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "apply_error", fmt.Sprintf("应用变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "apply_error", fmt.Sprintf("failed to apply changes: %v", err))
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
-		"message": "变更已应用生效",
+		"message": "changes applied",
 	})
 }
 
 // POST /changes/discard
 func (r *Router) handlePostChangesDiscard(w http.ResponseWriter, req *http.Request) {
 	if err := r.store.DiscardPendingChanges(); err != nil {
-		respondError(w, http.StatusInternalServerError, "discard_error", fmt.Sprintf("丢弃变更失败: %v", err))
+		respondError(w, http.StatusInternalServerError, "discard_error", fmt.Sprintf("failed to discard changes: %v", err))
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]any{
 		"status":  "success",
-		"message": "变更已丢弃",
+		"message": "changes discarded",
 	})
 }

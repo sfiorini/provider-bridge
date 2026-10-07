@@ -122,7 +122,7 @@ describe("apiFetch", () => {
   });
 
   test("normalizes empty error responses", async () => {
-    localStorage.setItem("moonbridge.console.locale", "zh-CN");
+    localStorage.setItem("providerbridge.console.locale", "en-US");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("", {
         status: 401,
@@ -133,12 +133,12 @@ describe("apiFetch", () => {
     await expect(apiFetch("/status")).rejects.toMatchObject({
       status: 401,
       code: "request_error",
-      message: "请求失败，状态码 401"
+      message: "Request failed with status 401"
     });
   });
 
   test("normalizes malformed JSON error responses", async () => {
-    localStorage.setItem("moonbridge.console.locale", "zh-CN");
+    localStorage.setItem("providerbridge.console.locale", "en-US");
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response("{", {
         status: 502,
@@ -149,7 +149,7 @@ describe("apiFetch", () => {
     await expect(apiFetch("/status")).rejects.toMatchObject({
       status: 502,
       code: "request_error",
-      message: "请求失败，状态码 502"
+      message: "Request failed with status 502"
     });
   });
 });

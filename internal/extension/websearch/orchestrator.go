@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"log/slog"
-	"moonbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/anthropic"
 )
 
 // ToolHandler executes a tool given its input and returns a formatted result string.
@@ -120,7 +120,7 @@ func (o *Orchestrator) CreateMessage(ctx context.Context, req anthropic.MessageR
 			for _, tu := range searchUses {
 				_, execErr := o.executeSearch(ctx, tu)
 				if execErr != nil {
-					log.Warn("搜索执行失败（混合调用）", "tool", tu.Name, "error", execErr)
+					log.Warn("search execution failed (mixed calls)", "tool", tu.Name, "error", execErr)
 				}
 			}
 			// Filter search tool_uses from the response content.
@@ -152,7 +152,7 @@ func (o *Orchestrator) CreateMessage(ctx context.Context, req anthropic.MessageR
 			Content: toolResults,
 		})
 
-		log.Debug("搜索循环轮次完成", "round", round+1, "tools_executed", len(searchUses))
+		log.Debug("search loop round complete", "round", round+1, "tools_executed", len(searchUses))
 	}
 
 	return anthropic.MessageResponse{}, fmt.Errorf("search loop exceeded max rounds (%d)", o.maxRounds)
@@ -221,7 +221,7 @@ func (o *Orchestrator) StreamMessage(ctx context.Context, req anthropic.MessageR
 			for _, tu := range searchUses {
 				_, execErr := o.executeSearch(ctx, tu)
 				if execErr != nil {
-					log.Warn("流式搜索执行失败（混合调用）", "tool", tu.Name, "error", execErr)
+					log.Warn("streaming search execution failed (mixed calls)", "tool", tu.Name, "error", execErr)
 				}
 			}
 			// Filter search tool_uses from the returned events.
@@ -243,7 +243,7 @@ func (o *Orchestrator) StreamMessage(ctx context.Context, req anthropic.MessageR
 			Content: toolResults,
 		})
 
-		log.Debug("流式搜索循环轮次完成", "round", round+1, "tools_executed", len(searchUses))
+		log.Debug("streaming search loop round complete", "round", round+1, "tools_executed", len(searchUses))
 	}
 
 	return nil, fmt.Errorf("stream search loop exceeded max rounds (%d)", o.maxRounds)
@@ -327,7 +327,7 @@ func (o *Orchestrator) buildToolResults(ctx context.Context, searchUses []anthro
 	for _, tu := range searchUses {
 		result, execErr := o.executeSearch(ctx, tu)
 		if execErr != nil {
-			log.Warn("搜索执行失败", "tool", tu.Name, "error", execErr)
+			log.Warn("search execution failed", "tool", tu.Name, "error", execErr)
 			results = append(results, anthropic.ContentBlock{
 				Type:      "tool_result",
 				ToolUseID: tu.ID,

@@ -1,4 +1,4 @@
-// Package dbd1 implements a Moon Bridge extension that provides a Cloudflare D1
+// Package dbd1 implements a Provider Bridge extension that provides a Cloudflare D1
 // database backend for persistence consumers (Worker environment only).
 //
 // The D1 provider does not directly import the Cloudflare Workers SDK. Instead,
@@ -12,7 +12,7 @@
 //	  db_d1:
 //	    enabled: true
 //	    config:
-//	      binding: MOONBRIDGE_DB
+//	      binding: PROVIDER_BRIDGE_DB
 package dbd1
 
 import (
@@ -20,9 +20,9 @@ import (
 	"database/sql"
 	"fmt"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/db"
-	"moonbridge/internal/extension/plugin"
+	"providerbridge/internal/config"
+	"providerbridge/internal/db"
+	"providerbridge/internal/extension/plugin"
 )
 
 const PluginName = "db_d1"
@@ -122,7 +122,7 @@ func (p *Plugin) Init(ctx plugin.PluginContext) error {
 		p.provider.cfg = *plugin.Config[Config](ctx)
 		p.enabled = true
 		if ctx.Logger != nil {
-			ctx.Logger.Info("D1 持久化已启用", "binding", p.provider.cfg.Binding)
+			ctx.Logger.Info("D1 persistence enabled", "binding", p.provider.cfg.Binding)
 		}
 		return nil
 	}
@@ -132,7 +132,7 @@ func (p *Plugin) Init(ctx plugin.PluginContext) error {
 	if cfg != nil && cfg.Binding != "" {
 		// Configured but not injected: this is a non-Worker environment.
 		if ctx.Logger != nil {
-			ctx.Logger.Warn("D1 持久化已配置但当前环境不支持（仅在 Cloudflare Worker 中可用）")
+			ctx.Logger.Warn("D1 persistence configured but unsupported in this environment (Cloudflare Workers only)")
 		}
 	}
 	return nil

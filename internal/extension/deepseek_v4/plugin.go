@@ -6,11 +6,11 @@ import (
 	"log/slog"
 	"strings"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/extension/plugin"
-	"moonbridge/internal/format"
-	"moonbridge/internal/protocol/anthropic"
-	"moonbridge/internal/protocol/openai"
+	"providerbridge/internal/config"
+	"providerbridge/internal/extension/plugin"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/openai"
 )
 
 const (
@@ -228,7 +228,7 @@ func (p *DSPlugin) warnRequiredThinkingFallback(target string, attrs ...any) {
 	}
 	args := []any{"target", target}
 	args = append(args, attrs...)
-	p.logger.Warn("DeepSeek V4 历史缺少可回放 thinking，已在请求侧补空 thinking block", args...)
+	p.logger.Warn("DeepSeek V4 history missing replayable thinking; inserted an empty thinking block on the request side", args...)
 }
 
 func (p *DSPlugin) thinkingBlockFromSummary(summary []openai.ReasoningItemSummary) (anthropic.ContentBlock, bool) {

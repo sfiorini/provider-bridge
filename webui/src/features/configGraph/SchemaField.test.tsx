@@ -89,7 +89,7 @@ describe("SchemaField", () => {
     expect(helpButton).toHaveAttribute("aria-describedby");
   });
 
-  test("localizes fallback field help metadata in Chinese locale", async () => {
+  test("shows fallback field help metadata", async () => {
     const field: FieldSchema = {
       path: "custom_limit",
       type: "number",
@@ -103,45 +103,15 @@ describe("SchemaField", () => {
         field={field}
         value={10}
         onChange={() => undefined}
-      />,
-      { locale: "zh-CN" }
+      />
     );
 
-    await userEvent.click(getMaterialIconButton(document, "Custom limit 帮助"));
+    await userEvent.click(getMaterialIconButton(document, "Help for Custom limit"));
 
     const tooltip = screen.getByRole("tooltip");
-    expect(tooltip).toHaveTextContent("类型: number");
-    expect(tooltip).toHaveTextContent("必填");
-    expect(tooltip).toHaveTextContent("可能需要重启");
-  });
-
-  test("localizes provider protocol option labels in Chinese locale", async () => {
-    const field: FieldSchema = {
-      path: "protocol",
-      type: "string",
-      label: "Protocol",
-      control: "select",
-      enum: ["anthropic", "openai-response", "openai-chat", "google-genai"],
-      hotReloadable: true
-    };
-
-    renderWithConsoleProviders(
-      <SchemaField
-        field={field}
-        value="openai-response"
-        onChange={() => undefined}
-        docPath="providers.<key>.protocol"
-      />,
-      { locale: "zh-CN" }
-    );
-
-    const materialSelect = await findMaterialSelect(document, "上游协议");
-    expect(getMaterialSelectOptions(materialSelect).map((option) => option.displayText)).toEqual([
-      "Anthropic",
-      "OpenAI Responses",
-      "OpenAI Chat",
-      "Gemini"
-    ]);
+    expect(tooltip).toHaveTextContent("Type: number");
+    expect(tooltip).toHaveTextContent("Required");
+    expect(tooltip).toHaveTextContent("May require restart");
   });
 
   test("keeps trailing field help tooltip inside the viewport", async () => {
@@ -544,27 +514,6 @@ describe("SchemaField", () => {
     expect(document.querySelector(".schema-structured-object")).toHaveTextContent("Web Search");
     expect(document.querySelector(".schema-structured-object")).not.toHaveTextContent("Structured editor");
     expect(onChange).not.toHaveBeenCalled();
-  });
-
-  test("localizes structured object editors in Chinese locale", () => {
-    const field: FieldSchema = {
-      path: "pricing",
-      type: "object",
-      label: "Pricing",
-      control: "object",
-      hotReloadable: true
-    };
-
-    renderWithConsoleProviders(
-      <SchemaField field={field} value={{ input_price: 3 }} onChange={() => undefined} />,
-      { locale: "zh-CN" }
-    );
-
-    const editor = document.querySelector(".schema-structured-object");
-    expect(editor).toHaveAttribute("aria-label", "Pricing，结构化编辑器");
-    expect(editor).not.toHaveTextContent("结构化编辑器");
-    expect(getMaterialTextField(document, "input_price")).toBeInTheDocument();
-    expect(queryMaterialTextField(document, "Pricing JSON")).not.toBeInTheDocument();
   });
 
   test("toggles boolean fields with the Material Web switch", async () => {

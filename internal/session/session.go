@@ -45,5 +45,5 @@ type ContextKey struct{}
 
 // String returns the context key name for debugging.
 func (k ContextKey) String() string {
-	return "moonbridge-session"
+	return "providerbridge-session"
 }

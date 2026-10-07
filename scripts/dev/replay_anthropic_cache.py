@@ -121,7 +121,7 @@ class SimSummary:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Replay MoonBridge Anthropic traces and simulate prompt caching.",
+        description="Replay Provider Bridge Anthropic traces and simulate prompt caching.",
     )
     parser.add_argument(
         "trace",

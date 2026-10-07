@@ -1,5 +1,5 @@
 {
-  "name": "moonbridge-worker",
+  "name": "providerbridge-worker",
   "version": "0.1.0",
   "private": true,
   "scripts": {

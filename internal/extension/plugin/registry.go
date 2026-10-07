@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"net/http"
 
-	"moonbridge/internal/config"
-	"moonbridge/internal/format"
-	"moonbridge/internal/logger"
-	"moonbridge/internal/protocol/openai"
+	"providerbridge/internal/config"
+	"providerbridge/internal/format"
+	"providerbridge/internal/logger"
+	"providerbridge/internal/protocol/openai"
 )
 
 // Registry holds registered plugins and dispatches to their capabilities.
@@ -167,7 +167,7 @@ func (r *Registry) InitAll(appCfg InitConfigProvider) error {
 		if err := p.Init(ctx); err != nil {
 			return fmt.Errorf("plugin %s init failed: %w", p.Name(), err)
 		}
-		r.logger.Info("插件已初始化", "name", p.Name())
+		r.logger.Info("plugin initialized", "name", p.Name())
 	}
 	return nil
 }
@@ -176,7 +176,7 @@ func (r *Registry) InitAll(appCfg InitConfigProvider) error {
 func (r *Registry) ShutdownAll() {
 	for i := len(r.plugins) - 1; i >= 0; i-- {
 		if err := r.plugins[i].Shutdown(); err != nil {
-			r.logger.Warn("插件关闭出错", "name", r.plugins[i].Name(), "error", err)
+			r.logger.Warn("plugin close error", "name", r.plugins[i].Name(), "error", err)
 		}
 	}
 }

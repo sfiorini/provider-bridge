@@ -2,15 +2,13 @@ import { describe, expect, test } from "vitest";
 import { configDescriptions, requiredConfigPaths } from "./configDescriptions";
 
 describe("configDescriptions", () => {
-  test("documents all required first-pass config paths in both languages", () => {
+  test("documents all required first-pass config paths", () => {
     for (const path of requiredConfigPaths) {
       const entry = configDescriptions[path];
 
       expect(entry, path).toBeDefined();
       expect(entry.title["en-US"], path).toBeTruthy();
-      expect(entry.title["zh-CN"], path).toBeTruthy();
       expect(entry.description["en-US"], path).toBeTruthy();
-      expect(entry.description["zh-CN"], path).toBeTruthy();
     }
   });
 

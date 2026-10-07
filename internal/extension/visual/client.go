@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"moonbridge/internal/format"
+	"providerbridge/internal/format"
 )
 
-const visualSystemPrompt = "You are a vision analysis model behind Moon Bridge Visual. Analyze images carefully, state uncertainty, and do not invent visual facts."
+const visualSystemPrompt = "You are a vision analysis model behind Provider Bridge Visual. Analyze images carefully, state uncertainty, and do not invent visual facts."
 
 // CoreProvider is a protocol-agnostic LLM provider interface.
 // It operates on format.CoreRequest / format.CoreResponse so the visual plugin
