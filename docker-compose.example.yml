@@ -1,7 +1,7 @@
 services:
   providerbridge:
     # Default: prebuilt release image from GHCR.
-    image: ghcr.io/sfiorini/provider-bridge:v0.1.0
+    image: ghcr.io/sfiorini/provider-bridge:0.1.0
     # Local build alternative:
     # build:
     #   context: .
