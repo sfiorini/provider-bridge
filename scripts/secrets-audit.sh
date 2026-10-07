@@ -19,6 +19,22 @@
 # Constraints: macOS (BSD grep) and Linux safe; no grep -P. Never prints a
 # full secret value (matches masked to first/last 4 chars). No network
 # access; GitHub-side checks (gh secret list, gh variable list) are manual.
+#
+# Performance: a full-history scan yields tens of thousands of candidate
+# lines (one hit per commit per surviving line), so classification must be
+# O(unique findings), never O(hits). Two mechanisms keep it that way:
+#   1. Parsing uses fixed-offset substrings and colon-splitting ONLY -
+#      bash 3.2 glob patterns containing '|' (or an interior '*') cost
+#      ~1ms per expansion, which is pathological at 40k lines.
+#   2. Before classification, every hit is deduplicated by an exact
+#      (kind, path, content) key built by a single sed pass and tracked
+#      in a mktemp directory: a line that recurs across N commits is
+#      emitted once, not N times, and the per-line classifier only runs
+#      on unique findings. Classification is a pure function of the
+#      content, so two hits with the same content can never be classified
+#      differently - dedupe never changes a verdict, only duplicate
+#      reporting. Keys longer than 200 bytes skip dedupe (filename limit).
+export LC_ALL=C
 set -euo pipefail
 
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -92,6 +108,17 @@ is_keyclass() { # <char> -> 0 if the char is in [A-Za-z0-9_-], else 1
 }
 
 strip_whitelist() { # <line> -> line with whole-token fixture occurrences removed
+    # Performance fast path: if the line contains no fixture string at
+    # all, stripping is the identity and the (byte-exact) occurrence loop
+    # below can be skipped entirely; the case test is a single fast glob.
+    local line="$1" w hit
+    hit=""
+    for w in "${WHITELIST[@]}"; do
+        case "$line" in
+            *"$w"*) hit=1; break ;;
+        esac
+    done
+    [ -n "$hit" ] || { printf '%s\n' "$line"; return 0; }
     # An occurrence of a fixture counts as a whole token only when the
     # character before and after it (where present) is NOT key-class
     # ([A-Za-z0-9_-]). Delimiters (space, : = " ' , < >) are not key-class,
@@ -103,7 +130,7 @@ strip_whitelist() { # <line> -> line with whole-token fixture occurrences remove
     # separated by a non-key-class delimiter (e.g. FIXTURE+FIXTURE) has
     # whole-token occurrences and is stripped - stripping a whitelisted
     # fixture is always safe.
-    local line="$1" w out pre post ch_pre ch_post
+    local out pre post ch_pre ch_post
     for w in "${WHITELIST[@]}"; do
         out=""
         while :; do
@@ -137,6 +164,26 @@ emit() { # <origin> <location> <content-line> - classify one hit
         printf 'DIRTY  %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
         return 0
     fi
+    if [ "$rest" = "$line" ]; then
+        # Nothing was stripped, so the stripped-line RE_INFO test is the
+        # very same test as the line test: extract the first match once
+        # and use it both as the line-match gate and as the placeholder
+        # input (identical result to the two-stage path below, one grep
+        # fewer per line).
+        m="$(printf '%s\n' "$line" | grep -Eio -- "$RE_INFO" | head -n 1 || true)"
+        if [ -n "$m" ]; then
+            if printf '%s\n' "$m" | grep -Eiq -- "$RE_PLACEHOLDER"; then
+                INFO=$((INFO + 1))
+                if [ "$GATE" -eq 0 ]; then
+                    printf 'INFO   %-10s %s  (placeholder-shaped value; not a gate failure)\n' "$origin" "$loc"
+                fi
+            else
+                REVIEW=$((REVIEW + 1))
+                printf 'REVIEW %-10s %s  match=%s\n' "$origin" "$loc" "$(mask "$m")"
+            fi
+        fi
+        return 0
+    fi
     if printf '%s\n' "$line" | grep -Eiq -- "$RE_INFO"; then
         if printf '%s\n' "$rest" | grep -Eiq -- "$RE_INFO"; then
             m="$(printf '%s\n' "$rest" | grep -Eio -- "$RE_INFO" | head -n 1 || true)"
@@ -159,10 +206,52 @@ emit() { # <origin> <location> <content-line> - classify one hit
     return 0
 }
 
+# Dedupe-key builder: one sed -n pass over the raw hits file prints TWO
+# lines per hit - a dedupe KEY line, then the untouched raw hit line -
+# which the bash loop reads as a pair. KEY is kind + an exact, injective,
+# filename-safe encoding of the finding identity (TREE/HIST: path:content,
+# MSG: content): the volatile fields (commit sha, line number) are dropped
+# with the same left-to-right colon parsing the bash classifier uses, then
+# % -> %25 is escaped FIRST and / -> %2F second (URL-style, prefix-free:
+# no two different findings can encode to the same key). A hit recurring
+# in N commits therefore maps to ONE key.
+KEYPROG='
+/^TREE\|/{h
+s/^TREE\|([^:]*):[0-9]*:(.*)$/\1:\2/
+s/%/%25/g
+s;/;%2F;g
+s/^/T/
+p
+g
+p
+}
+/^HIST\|/{h
+s/^HIST\|[0-9a-f]{40}://
+s/^([^:]*):[0-9]*:(.*)$/\1:\2/
+s/%/%25/g
+s;/;%2F;g
+s/^/H/
+p
+g
+p
+}
+/^MSG\|/{h
+s/^MSG\|[0-9a-f]{40}:[0-9]*://
+s/%/%25/g
+s;/;%2F;g
+s/^/M/
+p
+g
+p
+}
+'
+
 scan() { # scans the repository at $PWD
-    local tmp hits f commit r path lineno content raw kind body
+    local tmp seen hits keys f commit r path lineno content raw kind body line key
     tmp="$(mktemp -d)"
+    seen="$(mktemp -d)"
     hits="$tmp/hits"
+    keys="$tmp/keys"
     : > "$hits"
 
     echo "scan: working tree" >&2
@@ -184,30 +273,44 @@ scan() { # scans the repository at $PWD
         done
     fi
 
-    while IFS= read -r raw; do
+    # One streaming pass builds the dedupe keys (C speed); the bash loop
+    # reads (key, raw) pairs and classifies only the first occurrence of
+    # each (kind, path, content) - the [ -e ] test is a shell builtin, so
+    # deduplication costs no subprocesses.
+    sed -n -E "$KEYPROG" "$hits" > "$keys" || true
+    while IFS= read -r key && IFS= read -r raw; do
         [ -n "$raw" ] || continue
-        kind="${raw%%|*}"; body="${raw#*|}"
+        if [ "${#key}" -le 200 ]; then
+            if [ -e "$seen/$key" ]; then
+                continue
+            fi
+            : > "$seen/$key"
+        fi
+        kind="${raw:0:3}"
         case "$kind" in
-            TREE)
+            TRE)
+                body="${raw:5}"
                 path="${body%%:*}"; r="${body#*:}"
                 lineno="${r%%:*}"; content="${r#*:}"
                 emit tree "${path}:${lineno}" "$content"
                 ;;
-            HIST)
+            HIS)
+                body="${raw:5}"
                 commit="${body%%:*}"; r="${body#*:}"
                 path="${r%%:*}"; r="${r#*:}"
                 lineno="${r%%:*}"; content="${r#*:}"
                 emit history "${commit:0:8}:${path}:${lineno}" "$content"
                 ;;
             MSG)
+                body="${raw:4}"
                 commit="${body%%:*}"; r="${body#*:}"
                 lineno="${r%%:*}"; content="${r#*:}"
                 emit commit-msg "${commit:0:8}:${lineno}" "$content"
                 ;;
         esac
-    done < "$hits"
+    done < "$keys"
 
-    rm -rf "$tmp"
+    rm -rf "$tmp" "$seen"
     if [ "$HARD" -gt 0 ]; then
         echo "SECRETS AUDIT: DIRTY - $HARD high-confidence finding(s), $REVIEW review item(s), $INFO whitelisted fixture/placeholder hit(s)"
         return 1
@@ -281,6 +384,13 @@ self_test() {
     fi
     [ "$(grep -Fc 'DIRTY  tree' "$out")" = "3" ] || { echo "self-test FAIL: expected exactly 3 tree DIRTY lines (Bearer; placeholder-shaped real secret; fixture-prefixed real secret)" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
     if grep -Fq -- "$fake" "$out"; then echo "self-test FAIL: full secret value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 6) duplicate suppression: fixture.yml is present in the tree of every
+    #    commit so far (4 commits), so each of its 2 lines yields 4 history
+    #    hits; identical (kind, path, content) findings must be reported
+    #    ONCE, not once per commit.
+    ( cd "$tmp" && "$SELF" ) > "$out" 2>&1 || true
+    [ "$(grep -Fc 'INFO   history' "$out")" = "2" ] || { echo "self-test FAIL: expected exactly 2 deduplicated INFO history lines (got $(grep -Fc 'INFO   history' "$out"))" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
 
     rm -rf "$tmp"
     echo "secrets-audit self-test: OK"
