@@ -160,7 +160,7 @@ A reference deployment runs one container (name `providerbridge`, image
   running **loses recent transactions**. Stop the container first (a clean close
   checkpoints the WAL, after which the main file is self-contained), then copy.
 - **Web-search resolution is startup-only.** Any `web_search` config change
-  requires `docker restart provider-bridge`.
+  requires `docker restart providerbridge`.
 
 ### Updating a deployment
 

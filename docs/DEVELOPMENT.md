@@ -76,7 +76,7 @@ Build and test inside the reference container, from the repo root:
 ```bash
 docker run --rm \
   -v "$PWD":/app -w /app \
-  golang:1.27-bookworm go test ./...'
+  golang:1.27-bookworm go test ./...
 ```
 
 (and the same container with `-tags=e2e` for the protocol E2E suite — see

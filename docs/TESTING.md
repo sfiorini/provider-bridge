@@ -30,7 +30,7 @@ docker run --rm \
 
 docker run --rm \
   -v "$PWD":/app -w /app \
-  golang:1.27-bookworm go test -tags=e2e ./internal/e2e/... ./internal/service/e2e/...'
+  golang:1.27-bookworm go test -tags=e2e ./internal/e2e/... ./internal/service/e2e/...
 ```
 
 `make test` runs `go test ./...`; `make cover-check` enforces the per-package
