@@ -37,9 +37,8 @@ Keep branches short-lived and rebase on `main` before opening a pull request.
 5. A maintainer reviews and merges.
 
 Development setup, the project tree, and the build/test commands are documented
-in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). The mini-host build/test commands
-(the canonical dev environment) and the test tiers live in
-[docs/TESTING.md](docs/TESTING.md).
+in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md). The build/test commands and the
+test tiers live in [docs/TESTING.md](docs/TESTING.md).
 
 ## Code standards
 
