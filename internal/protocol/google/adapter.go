@@ -428,12 +428,15 @@ func (a *GeminiProviderAdapter) blocksToContent(blocks []format.CoreContentBlock
 		case "text":
 			parts = append(parts, Part{Text: b.Text})
 		case "image":
-			parts = append(parts, Part{
-				InlineData: &Blob{
-					MimeType: b.MediaType,
-					Data:     b.ImageData,
-				},
-			})
+			mediaType, payload, isURL, ok := format.SplitImageSource(b)
+			if !ok {
+				continue
+			}
+			if isURL {
+				parts = append(parts, Part{FileData: &FileData{MimeType: mediaType, FileURI: payload}})
+			} else {
+				parts = append(parts, Part{InlineData: &Blob{MimeType: mediaType, Data: payload}})
+			}
 		case "tool_use":
 			// Store ToolUseID -> ToolName mapping for later FunctionResponse resolution (G-01).
 			if toolUseIDMap != nil {

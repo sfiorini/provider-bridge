@@ -11,6 +11,23 @@ import (
 	"providerbridge/internal/format"
 )
 
+// ensureVisualTools appends the visual tool definitions that the request does
+// not already carry. The Responses inbound injects them upstream of the
+// orchestrator, so the presence check keeps that path from duplicating them.
+func ensureVisualTools(existing []format.CoreTool) []format.CoreTool {
+	present := make(map[string]struct{}, len(existing))
+	for _, tool := range existing {
+		present[tool.Name] = struct{}{}
+	}
+	for _, tool := range CoreTools() {
+		if _, ok := present[tool.Name]; ok {
+			continue
+		}
+		existing = append(existing, tool)
+	}
+	return existing
+}
+
 // CoreUpstreamProvider wraps any CoreProvider to be used as the upstream
 // (text-only model) in the visual orchestration loop.
 type CoreUpstreamProvider interface {
@@ -58,6 +75,13 @@ func (o *CoreOrchestrator) CreateCore(ctx context.Context, req *format.CoreReque
 	}
 	req = cloneCoreRequest(req)
 	req, availableImages := prepareCoreRequestForVisual(req)
+	// Offer the visual tools to the upstream model. The Responses inbound injects
+	// them via its client adapter, but the Core executor paths (/v1/messages and
+	// /v1/chat/completions) never inject plugin tools — without this the model is
+	// shown the "[Image #N is available to Visual Brief and Visual QA…]"
+	// placeholder while never being given those tools, so it can never ask for an
+	// analysis and instead answers that it cannot see the image.
+	req.Tools = ensureVisualTools(req.Tools)
 	log := slog.Default()
 	aggregatedUsage := format.CoreUsage{}
 	hasAggregatedUsage := false
