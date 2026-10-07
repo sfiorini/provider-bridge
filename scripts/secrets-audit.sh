@@ -53,15 +53,22 @@ done
 
 # High-confidence secret shapes (ERE). The sk- branch requires at least one
 # digit followed by 15+ key-class chars so hyphenated prose (e.g. "risk-based")
-# cannot trip it. The last branch is the Telegram bot-token shape
-# (8-10 digits, colon, 35 key-class chars) - the owner's known leak vector.
+# cannot trip it. Stripe sk_/rk_ underscore shapes are deliberately NOT here:
+# measured 2026-10-07 they add ~+30s wall (+40% user) to the full scan for
+# zero findings on this repo - not cheap; revisit (and whitelist Stripe's
+# public sk_test_ doc keys) if a Stripe integration ever lands. The last
+# branch is the Telegram bot-token shape (8-10 digits, colon, 35 key-class
+# chars) - the owner's known leak vector.
 RE_HARD='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]*[0-9][A-Za-z0-9_-]{15,}|tvly-[A-Za-z0-9_-]{16,}|gh[oprsu]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|Bearer [A-Za-z0-9._~+/=-]{20,}|[0-9]{8,10}:[A-Za-z0-9_-]{35}'
 
 # Generic credential assignment (REVIEW/INFO only; NEVER fails the gate).
 # Key names beyond the obvious api_key/password family: bot_token and
 # database_url/dsn name the remaining credential classes named in the M8
 # plan; a bot_token VALUE is high-confidence and caught by RE_HARD anyway.
-RE_INFO="(api_key|apikey|api_token|auth_token|access_token|bot_token|database_url|dsn|secret|password|passwd)[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_./+=-]{8,}"
+# aws_secret_access_key/secret_access_key cover the AWS secret-key half
+# (only the AKIA id half is high-confidence); POSIX leftmost-longest makes
+# the longer alternative win over the inner `secret` substring.
+RE_INFO="(api_key|apikey|aws_secret_access_key|secret_access_key|api_token|auth_token|access_token|bot_token|database_url|dsn|secret|password|passwd)[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_./+=-]{8,}"
 
 # Placeholder markers: a REVIEW candidate whose matched text contains one of
 # these word-boundary markers (or a <...> / ${...} template) is downgraded to
@@ -291,6 +298,7 @@ scan() { # scans the repository at $PWD
     keys="$tmp/keys"
     revs="$tmp/revs"
     files="$tmp/files"
+    body="$tmp/body"
     : > "$hits"
 
     # A collection stage that ERRORS must abort loudly (exit 3) and never
@@ -335,9 +343,20 @@ scan() { # scans the repository at $PWD
     [ "$rc" -eq 0 ] || fail_loud "git for-each-ref refs/tags failed (exit $rc)"
     while IFS= read -r tag; do
         tag_esc="${tag//&/\\&}"
+        # Fail-closed read: the tag message is read into a temp file and
+        # the git exit status checked BEFORE grepping. In the old 3-stage
+        # git|grep|sed pipeline, `set -o pipefail` reports the RIGHTMOST
+        # non-zero exit, so a git ERROR (e.g. 128: corrupt object, or the
+        # ref mutated between the list and the read) was masked by the
+        # grep's "no match" exit 1 - the `rc <= 1` check read a real error
+        # as "no match" and a repo with unreadable tag messages printed
+        # CLEAN. The grep|sed pipeline below stays 2-stage: sed always
+        # exits 0, so a grep ERROR (>= 2) can never be masked either.
         rc=0
-        git for-each-ref --format='%(contents)' "$tag" < /dev/null \
-            | grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" \
+        git for-each-ref --format='%(contents)' "$tag" < /dev/null > "$body" || rc="$?"
+        [ "$rc" -eq 0 ] || fail_loud "tag-message read failed for $tag (git for-each-ref exit $rc)"
+        rc=0
+        grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" \
             | sed "s~^~TAG|$tag_esc:~" >> "$hits" || rc="$?"
         [ "$rc" -le 1 ] || fail_loud "tag-message scan failed for $tag (exit $rc)"
     done < "$revs.tags"
@@ -353,9 +372,15 @@ scan() { # scans the repository at $PWD
         [ "$rc" -le 1 ] || fail_loud "history scan failed (git grep exit $rc)"
         echo "scan: commit messages" >&2
         while IFS= read -r commit; do
+            # Fail-closed read, same as the tag stage above: the message is
+            # read into a temp file with an explicit git exit check BEFORE
+            # grepping, so a `git log` ERROR (unreadable commit) can never
+            # be masked by the grep's "no match" exit 1 under pipefail.
             rc=0
-            git log -1 --format='%B' "$commit" < /dev/null \
-                | grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" \
+            git log -1 --format='%B' "$commit" < /dev/null > "$body" || rc="$?"
+            [ "$rc" -eq 0 ] || fail_loud "commit-message read failed for $commit (git log exit $rc)"
+            rc=0
+            grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" \
                 | sed "s/^/MSG|$commit:/" >> "$hits" || rc="$?"
             [ "$rc" -le 1 ] || fail_loud "commit-message scan failed for $commit (exit $rc)"
         done < "$revs"
@@ -418,7 +443,7 @@ scan() { # scans the repository at $PWD
 }
 
 self_test() {
-    local tmp tmp2 tmp3 fake out tg rc
+    local tmp tmp2 tmp3 tmp4 tmp5 realgit fake out tg awsv rc
     tmp="$(mktemp -d)" || return 2
     fake="sk-ant-self""test-0123456789abcdefghij"
     out="$tmp/out"
@@ -550,6 +575,7 @@ self_test() {
     [ "$rc" -eq 3 ] || { echo "self-test FAIL: collection-stage error must exit 3 (got $rc), never CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
     if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: errored scan must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
     grep -Fq 'error: secrets-audit:' "$out" || { echo "self-test FAIL: errored scan must print a diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    chmod 644 "$tmp/unreadable.txt"  # restore readability: later steps rescan $tmp
 
     # 12) fail-closed tree collection: with an unreadable index
     #     `git ls-files` ERRORS (exit 128) and its empty list is
@@ -572,6 +598,78 @@ self_test() {
     [ "$rc" -eq 3 ] || { echo "self-test FAIL: broken-index repo must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
     grep -Fq 'error: secrets-audit: git ls-files failed' "$out" || { echo "self-test FAIL: expected a git ls-files diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
     if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: tree-collection error must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 13) fail-closed 3-stage pipelines, part 1 (commit messages): under
+    #     `set -o pipefail` a pipeline's status is the RIGHTMOST non-zero
+    #     exit, so an upstream git ERROR would be masked by the middle
+    #     grep's "no match" exit 1 and the old `rc <= 1` check read a real
+    #     error as "no match" - a repo whose commit messages were UNREADABLE
+    #     printed CLEAN. A PATH shim forces `git log -1 --format=%B` to
+    #     exit 128 on an otherwise clean repo: the stage must abort with
+    #     exit 3 and a git log diagnostic, never a verdict.
+    realgit="$(command -v git)" || { rm -rf "$tmp"; return 2; }
+    tmp4="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp4" init -q
+    git -C "$tmp4" config user.email selftest@example.invalid
+    git -C "$tmp4" config user.name "secrets-audit self-test"
+    printf 'plain\n' > "$tmp4/plain.txt"
+    git -C "$tmp4" add -A
+    git -C "$tmp4" commit -qm "nothing to see here"
+    mkdir "$tmp4/shim"
+    cat > "$tmp4/shim/git" <<'SHIM'
+#!/bin/sh
+if [ "$1" = "log" ] && [ "$2" = "-1" ]; then exit 128; fi
+exec "$REAL_GIT" "$@"
+SHIM
+    chmod +x "$tmp4/shim/git"
+    rc=0
+    ( cd "$tmp4" && PATH="$tmp4/shim:$PATH" REAL_GIT="$realgit" "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: unreadable commit messages must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp4"; return 1; }
+    grep -Fq 'error: secrets-audit: commit-message read failed' "$out" || { echo "self-test FAIL: expected a git log read diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp4"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: unreadable commit messages must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp4"; return 1; fi
+    rm -rf "$tmp4"
+
+    # 14) fail-closed 3-stage pipelines, part 2 (tag messages): the same
+    #     pipefail masking applies to the tag pipeline. A PATH shim forces
+    #     the per-tag `git for-each-ref --format=%(contents)` call to exit
+    #     128 (the tag-LIST call uses %(refname) and still succeeds) on an
+    #     otherwise clean repo with one annotated tag: the stage must
+    #     abort with exit 3 and a for-each-ref diagnostic, never a verdict.
+    tmp5="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp5" init -q
+    git -C "$tmp5" config user.email selftest@example.invalid
+    git -C "$tmp5" config user.name "secrets-audit self-test"
+    printf 'plain\n' > "$tmp5/plain.txt"
+    git -C "$tmp5" add -A
+    git -C "$tmp5" commit -qm "nothing to see here"
+    git -C "$tmp5" tag -a -m "release notes: nothing sensitive" v0.0.1
+    mkdir "$tmp5/shim"
+    cat > "$tmp5/shim/git" <<'SHIM'
+#!/bin/sh
+if [ "$1" = "for-each-ref" ] && [ "$2" = "--format=%(contents)" ]; then exit 128; fi
+exec "$REAL_GIT" "$@"
+SHIM
+    chmod +x "$tmp5/shim/git"
+    rc=0
+    ( cd "$tmp5" && PATH="$tmp5/shim:$PATH" REAL_GIT="$realgit" "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: unreadable tag message must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp5"; return 1; }
+    grep -Fq 'error: secrets-audit: tag-message read failed' "$out" || { echo "self-test FAIL: expected a git for-each-ref read diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp5"; return 1; }
+    if grep -q 'SECRETS AUDIT: CLEAN' "$out"; then echo "self-test FAIL: unreadable tag message must not print CLEAN" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp" "$tmp5"; return 1; fi
+    rm -rf "$tmp5"
+
+    # 15) coverage: the AWS secret ACCESS key half was invisible (only the
+    #     AKIA id half was high-confidence): an aws_secret_access_key
+    #     assignment must be reported (REVIEW), never silently skipped.
+    #     (The literal below is split so this script's own source cannot
+    #     trip the gate. Stripe sk_/rk_ shapes stay out of RE_HARD - not
+    #     cheap, see the RE_HARD comment - so no pin exists for them.)
+    awsv="wJalrXUtnFEMI""K7ENGbPxRfiCYExAmPlKeY"
+    printf 'aws_secret_access_key: %s\n' "$awsv" > "$tmp/aws.yml"
+    # (|| true is safe: the expected REVIEW line is asserted next, so an
+    #  errored scan fails the step instead of passing it)
+    ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
+    grep -Eq '^REVIEW.*aws_...lKeY' "$out" || { echo "self-test FAIL: aws_secret_access_key assignment must be reported (REVIEW)" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -Fq -- "$awsv" "$out"; then echo "self-test FAIL: full secret value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
 
     rm -rf "$tmp"
     echo "secrets-audit self-test: OK"
