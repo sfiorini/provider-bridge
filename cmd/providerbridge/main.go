@@ -15,6 +15,7 @@ import (
 	"providerbridge/internal/config"
 	"providerbridge/internal/extension/codex"
 	"providerbridge/internal/logger"
+	"providerbridge/internal/service/api"
 	"providerbridge/internal/service/app"
 )
 
@@ -45,8 +46,13 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 	dumpConfigSchema := flags.Bool("dump-config-schema", false, "Generate config.schema.json alongside config and exit")
 	codexBaseURL := flags.String("codex-base-url", "", "Base URL to write in generated Codex config")
 	codexHome := flags.String("codex-home", "", "CODEX_HOME directory; when set, writes models_catalog.json there")
+	printVersion := flags.Bool("version", false, "Print version and exit")
 	if err := flags.Parse(args); err != nil {
 		return exitStartupErr
+	}
+	if *printVersion {
+		fmt.Fprintln(stdout, api.Version())
+		return exitOK
 	}
 	configFlagSet := flagWasSet(flags, "config")
 

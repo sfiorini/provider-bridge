@@ -2,12 +2,12 @@
 
 Provider Bridge ships as a single static binary. It runs as a standalone
 process, in a container, or (for edge use) as a Cloudflare Worker compiled to
-WASM. This document covers the generic deployment modes first, then the real
-homelab deployment — read that section before running the container.
+WASM. This document covers the generic deployment modes first, then a
+reference container deployment — read that section before running the
+container.
 
 > The infrastructure snippets here (reverse proxy, Compose, etc.) are examples.
-> Adjust them for your environment. The tracked deployment surface for the
-> reference host lives in [`deploy/mini/`](../deploy/mini/).
+> Adjust them for your environment.
 
 ## Standalone binary
 
@@ -137,11 +137,11 @@ sudo chown -R 65532:65532 ./data
 chmod 644 ./config.yml
 ```
 
-## Homelab deployment (reference host)
+## Reference container deployment
 
-The reference deployment lives on host `mini` at
-`/opt/docker/provider-bridge`, container `provider-bridge`, image
-`provider-bridge:latest`, published on port `38440`.
+A reference deployment runs one container (name `providerbridge`, image
+`providerbridge:local` or a published release image), published on port
+`38440`.
 
 ### Gotchas that each caused a real incident
 
@@ -160,32 +160,17 @@ The reference deployment lives on host `mini` at
   running **loses recent transactions**. Stop the container first (a clean close
   checkpoints the WAL, after which the main file is self-contained), then copy.
 - **Web-search resolution is startup-only.** Any `web_search` config change
-  requires `docker restart provider-bridge`.
+  requires `docker restart providerbridge`.
 
-### Deployment runbooks
+### Updating a deployment
 
-The tracked, first-class deployment surface is [`deploy/mini/`](../deploy/mini/):
-
-| File | Purpose |
-|------|---------|
-| [`PATCHES.md`](../deploy/mini/PATCHES.md) | Deployment runbook: what the fork adds, consumers, update flow, rollback |
-| [`update.sh`](../deploy/mini/update.sh) | Pull `origin/main`, rebuild, restart, health-check |
-| [`codex_regen.sh`](../deploy/mini/codex_regen.sh) | Regenerate Codex `config.toml` + `models_catalog.json` from the bridge |
-| [`MODEL-METADATA-RUNBOOK.md`](../deploy/mini/MODEL-METADATA-RUNBOOK.md) | Reconcile live model metadata with the verified `INVENTORY.md` values |
-| [`RENAME-CUTOVER.md`](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (legacy name → `providerbridge`) |
-
-Typical update:
+Pull, rebuild, restart, and wait for the health check:
 
 ```bash
-sudo /opt/docker/provider-bridge/update.sh
-```
-
-To develop on another machine and deploy: commit first, then rsync the source
-tree to the host and rebuild with Compose:
-
-```bash
-rsync -a --delete ./src/ mini:/opt/docker/provider-bridge/src/
-ssh mini 'cd /opt/docker/provider-bridge && sudo docker compose build && sudo docker compose up -d'
+git pull --ff-only
+docker compose build
+docker compose up -d
+docker compose ps   # wait until the service reports healthy
 ```
 
 ## Cloudflare Workers (WASM)

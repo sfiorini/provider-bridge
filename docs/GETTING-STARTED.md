@@ -13,7 +13,7 @@
 
 ### Get the code
 
-This is the Provider Bridge fork:
+Clone the repository:
 
 ```bash
 git clone git@github.com:sfiorini/provider-bridge.git
@@ -98,7 +98,7 @@ routes:
 providerbridge -config config.yml
 ```
 
-Startup output looks like this (English since the fork's English-only rewrite):
+Startup output looks like this:
 
 ```text
 Provider Bridge listening on 127.0.0.1:38440

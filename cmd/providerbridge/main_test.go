@@ -9,8 +9,27 @@ import (
 
 	"providerbridge/internal/config"
 	"providerbridge/internal/extension/codex"
+	"providerbridge/internal/service/api"
 	"providerbridge/internal/service/app"
 )
+
+func TestRunVersionFlagPrintsVersionWithoutConfig(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	// Capture the temp dir ONCE — the same dir must back both t.Setenv and the
+	// os.Stat check, otherwise the "no starter config" check is vacuous.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	code := run([]string{"-version"}, &stdout, &stderr)
+	if code != exitOK {
+		t.Fatalf("run() exit code = %d, want %d; stderr = %s", code, exitOK, stderr.String())
+	}
+	if got, want := stdout.String(), api.Version()+"\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Join(home, "provider-bridge", "config.yml")); !os.IsNotExist(err) {
+		t.Fatalf("-version must not create a starter config under HOME")
+	}
+}
 
 func TestPrintCodexConfigTomlDoesNotSetServiceTier(t *testing.T) {
 	var output bytes.Buffer

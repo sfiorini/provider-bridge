@@ -20,7 +20,7 @@ registered for the model endpoints.
 | Content type (JSON) | `application/json` |
 | Content type (streaming) | `text/event-stream` |
 | Content type (config export) | `application/x-yaml` |
-| Docker/homelab base URL | `http://mini:38440` (tunnel: `http://localhost:38440`) |
+| Deployment base URL | `https://my-provider-bridge:38440` (local: `http://localhost:38440`) |
 
 ## Authentication
 

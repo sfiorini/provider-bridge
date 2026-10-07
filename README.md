@@ -36,11 +36,11 @@ change. Full per-app setup lives in [docs/CONSUMERS.md](docs/CONSUMERS.md).
 
 | Consumer | Wire protocol | Connection target |
 |----------|---------------|-------------------|
-| Codex (OpenAI) | Responses (`/v1/responses`) | `http://mini:38440/v1` |
-| Claude Code | Anthropic Messages (`/v1/messages`) | `http://mini:38440` |
-| LibreChat | Chat Completions (`/v1/chat/completions`) | `http://host.docker.internal:38440/v1` |
-| Open WebUI | OpenAI type, `api_type: responses` | `http://host.docker.internal:38440/v1` |
-| Affiora (morphic fork) | Chat Completions (`/v1/chat/completions`) | `http://provider-bridge:38440/v1` |
+| Codex (OpenAI) | Responses (`/v1/responses`) | `https://my-provider-bridge:38440/v1` |
+| Claude Code | Anthropic Messages (`/v1/messages`) | `https://my-provider-bridge:38440` |
+| LibreChat | Chat Completions (`/v1/chat/completions`) | `https://my-provider-bridge:38440/v1` |
+| Open WebUI | OpenAI type, `api_type: responses` | `https://my-provider-bridge:38440/v1` |
+| Affiora | Chat Completions (`/v1/chat/completions`) | `http://providerbridge:38440/v1` |
 
 Generic form: `http(s)://<bridge-host>:<port>` with the
 `Authorization: Bearer <server.auth_token>` header when `server.auth_token` is

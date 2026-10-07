@@ -341,6 +341,9 @@ var (
 	goVersion = "unknown"
 )
 
+// Version returns the build-stamped version ("dev" when not set via ldflags).
+func Version() string { return version }
+
 // ---- helpers ----
 
 // compile-time check that *configWrapper satisfies ConfigAccessor.

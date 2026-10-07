@@ -1,7 +1,7 @@
 # Provider Bridge Documentation
 
 Provider Bridge is a self-hosted, multi-protocol AI model gateway. One process,
-one config, and one token put every AI consumer in the homelab in front of every
+one config, and one token put every AI consumer in your network in front of every
 model provider. Consumers keep speaking their native wire protocol — OpenAI
 Responses, Anthropic Messages, or Chat Completions — and the bridge translates
 all of them through one internal representation ("Core") to any upstream
@@ -37,23 +37,14 @@ still being written are marked **planned**.
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Dev setup, project tree, build, Web Console development, adding a provider or inbound adapter |
 | [DEVELOPMENT-CONVENTIONS.md](DEVELOPMENT-CONVENTIONS.md) | Package layout, dependency direction, naming, error handling, logging, config evolution, testing rules |
 | [TESTING.md](TESTING.md) | Test tiers (unit, protocol e2e, service e2e, management API) and the live wire-shape verification matrix |
+| [RELEASE.md](RELEASE.md) | Versioning, cutting a release, tag → CI → GHCR → GitHub Release flow |
 | [webui/MATERIAL-COMPONENT-DEBT.md](webui/MATERIAL-COMPONENT-DEBT.md) | Web UI Material-Web migration backlog and review requirements |
 
 ## Deployment
 
 | Document | What it covers |
 |----------|----------------|
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Binary, systemd, nginx, Docker/compose, Cloudflare Workers, config management, homelab gotchas |
-
-### Deployment runbooks
-
-| Document | What it covers |
-|----------|----------------|
-| [deploy/mini/PATCHES.md](../deploy/mini/PATCHES.md) | Deployment runbook for the mini host, including rollback |
-| [deploy/mini/update.sh](../deploy/mini/update.sh) | Pull the repo and redeploy the mini container |
-| [deploy/mini/codex_regen.sh](../deploy/mini/codex_regen.sh) | Regenerate Codex `config.toml` and `models_catalog.json` from the bridge |
-| [deploy/mini/MODEL-METADATA-RUNBOOK.md](../deploy/mini/MODEL-METADATA-RUNBOOK.md) | Reconcile live model metadata with the verified `INVENTORY.md` values |
-| [deploy/mini/RENAME-CUTOVER.md](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (legacy name → `providerbridge`) |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Binary, systemd, nginx, Docker/compose, Cloudflare Workers, config management, deployment gotchas |
 
 ## Related
 

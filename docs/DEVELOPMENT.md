@@ -2,12 +2,12 @@
 
 ## Prerequisites
 
-- **Go 1.25+** (the module declares `go 1.25.0`; CI and the mini build use
-  `golang:1.27-bookworm`).
+- **Go 1.25+** (the module declares `go 1.25.0`; CI uses the `golang:1.27`
+  toolchain).
 - **Node + npm** for the Web Console (`webui/`).
 - Optional: an upstream provider API key for live E2E runs.
-- The reference build/test host has no local Go — commands run inside a
-  `golang` container (see below).
+- If your workstation has no local Go, run commands inside a `golang`
+  container (see below).
 
 ## Project structure
 
@@ -69,27 +69,18 @@ go build -o worker.wasm ./cmd/cloudflare             # Cloudflare Worker
 make build                                           # build all packages
 ```
 
-## Test on the mini build host
+## Test without a local Go toolchain
 
-The reference workflow builds and tests on `mini` inside a Go container. From
-the repo root on the Mac:
-
-```bash
-rsync -a --delete ./src/ mini:/tmp/pb-build/     # or the deploy src
-ssh mini 'sudo docker run --rm \
-  -v pb-gomod:/go/pkg/mod \
-  -v /tmp/pb-build:/app -w /app \
-  golang:1.27-bookworm go test ./...'
-```
-
-The `-tags=e2e` build tag enables the protocol E2E suite:
+Build and test inside the reference container, from the repo root:
 
 ```bash
-ssh mini 'sudo docker run --rm \
-  -v pb-gomod:/go/pkg/mod \
-  -v /tmp/pb-build:/app -w /app \
-  golang:1.27-bookworm go test -tags=e2e ./internal/e2e/... ./internal/service/e2e/...'
+docker run --rm \
+  -v "$PWD":/app -w /app \
+  golang:1.27-bookworm go test ./...
 ```
+
+(and the same container with `-tags=e2e` for the protocol E2E suite — see
+[TESTING.md](TESTING.md)).
 
 Common local commands:
 

@@ -12,7 +12,7 @@ ambiguity.
 fixed), `conservative-unverified` (rounded down pending confirmation), `retired-alias`
 (upstream retired the model name).
 
-Checked against `GET /v1/models` on the mini deployment and the upstream providers'
+Checked against `GET /v1/models` on a live deployment and the upstream providers'
 own `/v1/models` metadata. Last checked 2026-10-07.
 
 ## Models

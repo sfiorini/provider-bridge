@@ -1,10 +1,17 @@
-.PHONY: test cover cover-html cover-check build webui-install webui-test webui-build build-with-webui
+.PHONY: test cover cover-html cover-check build webui-install webui-test webui-build build-with-webui release
 
 COVERAGE_THRESHOLD := 95
 COVER_PROFILE := /tmp/providerbridge-coverage.out
 
+VERSION     ?= $(shell cat VERSION 2>/dev/null || echo dev)
+BUILD_TIME  := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+GO_VERSION  := $(shell go env GOVERSION 2>/dev/null || echo unknown)
+LDFLAGS     := -X providerbridge/internal/service/api.version=$(VERSION) \
+               -X providerbridge/internal/service/api.buildTime=$(BUILD_TIME) \
+               -X providerbridge/internal/service/api.goVersion=$(GO_VERSION)
+
 build:
-	CGO_ENABLED=0 go build ./...
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" ./...
 
 webui-install:
 	npm --prefix webui install
@@ -19,7 +26,7 @@ webui-build:
 	cp -R webui/dist/. internal/service/webui/dist/
 
 build-with-webui: webui-build
-	CGO_ENABLED=0 go build ./...
+	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" ./...
 
 test:
 	CGO_ENABLED=0 go test ./...
@@ -45,3 +52,6 @@ cover-check:
 	done; \
 	if [ $$fail -eq 1 ]; then echo "Coverage check FAILED"; exit 1; fi; \
 	echo "Coverage check PASSED"
+
+release:
+	./scripts/release.sh
