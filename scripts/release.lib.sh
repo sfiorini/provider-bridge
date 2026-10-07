@@ -14,8 +14,8 @@ bump_version() {   # <current> <patch|minor|major|x.y.z>  -> prints new version
     local IFS='.'; set -- $cur; unset IFS
     case "$mode" in
         patch) echo "$1.$2.$((10#$3 + 1))" ;;
-        minor) echo "$1.$(($2 + 1)).0" ;;
-        major) echo "$(($1 + 1)).0.0" ;;
+        minor) printf '%s.%0*d.%0*d\n' "$1" "${#2}" "$((10#$2 + 1))" "${#3}" 0 ;;
+        major) printf '%0*d.%0*d.%0*d\n' "${#1}" "$((10#$1 + 1))" "${#2}" 0 "${#3}" 0 ;;
         *) echo "invalid bump mode: $mode (use patch|minor|major|x.y.z)" >&2; return 1 ;;
     esac
 }
@@ -30,9 +30,11 @@ render_changelog_entry() {  # <version> <date> ; commit subjects on stdin -> sec
 changelog_update() {  # <file> <version> <date> <body-file>
     local file="$1" ver="$2" date="$3" body="$4" tmp
     tmp="$(mktemp)"
-    awk -v ver="## [$ver] - $date" -v body="$(cat "$body")" '
+    awk -v ver="## [$ver] - $date" -v bodyfile="$body" '
         !ins && $0 == "## [Unreleased]" {
-            print "## [Unreleased]"; print ""; print ver; print ""; printf "%s\n", body; ins=1; next
+            print "## [Unreleased]"; print ""; print ver; print "";
+            while ((getline line < bodyfile) > 0) print line;
+            close(bodyfile); ins=1; next
         }
         { print }
     ' "$file" > "$tmp" && mv "$tmp" "$file"

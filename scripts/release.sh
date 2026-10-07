@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.." || exit 1
 . "$SCRIPT_DIR/release.lib.sh"
 
 BUMP="" DRY_RUN=0 ASSUME_YES=0 SYNC_CHECK=1
@@ -62,9 +63,9 @@ trap 'rollback; exit 1' ERR
 printf '%s\n' "$NEW" > "$SCRIPT_DIR/../VERSION"
 LAST_TAG="$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || true)"
 if [ -n "$LAST_TAG" ]; then
-    git log "$LAST_TAG..HEAD" --pretty=format:'%s' --no-merges > /tmp/pb-rel-body.$$ 2>/dev/null || : > /tmp/pb-rel-body.$$
+    git log "$LAST_TAG..HEAD" --pretty=format:'- %s' --no-merges > /tmp/pb-rel-body.$$ 2>/dev/null || : > /tmp/pb-rel-body.$$
 else
-    git log --pretty=format:'%s' --no-merges > /tmp/pb-rel-body.$$ || : > /tmp/pb-rel-body.$$
+    git log --pretty=format:'- %s' --no-merges > /tmp/pb-rel-body.$$ || : > /tmp/pb-rel-body.$$
 fi
 [ -f "$SCRIPT_DIR/../CHANGELOG.md" ] || printf '# Changelog\n\n## [Unreleased]\n' > "$SCRIPT_DIR/../CHANGELOG.md"
 [ -s "/tmp/pb-rel-body.$$" ] || printf -- '- Version bump\n' > "/tmp/pb-rel-body.$$"
@@ -77,7 +78,7 @@ ROLLBACK_COMMIT=1
 git tag "v$NEW"
 ROLLBACK_TAG=1
 BRANCH="${BRANCH:-$(git branch --show-current)}"
-git push origin "$BRANCH"
 git push origin "v$NEW"
+git push origin "$BRANCH"
 trap - ERR
 echo "Released v$NEW. CI will build, publish GHCR image and the GitHub Release."
