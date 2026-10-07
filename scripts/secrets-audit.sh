@@ -14,7 +14,8 @@
 #   --self-test  build a throwaway git repo and verify detection end-to-end
 #   -h, --help   print this header
 #
-# Exit codes: 0 = clean / self-test OK; 1 = DIRTY finding(s); 2 = usage error.
+# Exit codes: 0 = clean / self-test OK; 1 = DIRTY finding(s); 2 = usage error;
+#             3 = internal error (key extraction).
 #
 # Constraints: macOS (BSD grep) and Linux safe; no grep -P. Never prints a
 # full secret value (matches masked to first/last 4 chars). No network
@@ -277,7 +278,11 @@ scan() { # scans the repository at $PWD
     # reads (key, raw) pairs and classifies only the first occurrence of
     # each (kind, path, content) - the [ -e ] test is a shell builtin, so
     # deduplication costs no subprocesses.
-    sed -n -E "$KEYPROG" "$hits" > "$keys" || true
+    sed -n -E "$KEYPROG" "$hits" > "$keys" || {
+        rm -rf "$tmp" "$seen"
+        echo "error: secrets-audit: key extraction failed" >&2
+        exit 3
+    }
     while IFS= read -r key && IFS= read -r raw; do
         [ -n "$raw" ] || continue
         if [ "${#key}" -le 200 ]; then
