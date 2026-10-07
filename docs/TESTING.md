@@ -20,21 +20,16 @@ go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out -o coverage.html
 ```
 
-On the reference build host there is no local Go; run inside the container:
+On a workstation without a local Go toolchain, run the suites inside the
+`golang:1.27-bookworm` container (either locally or on your build host):
 
 ```bash
-ssh mini 'sudo docker run --rm \
-  -v pb-gomod:/go/pkg/mod \
-  -v /path/to/src:/app -w /app \
-  golang:1.27-bookworm go test ./...'
-```
+docker run --rm \
+  -v "$PWD":/app -w /app \
+  golang:1.27-bookworm go test ./...
 
-Protocol and service E2E suites require `-tags=e2e`:
-
-```bash
-ssh mini 'sudo docker run --rm \
-  -v pb-gomod:/go/pkg/mod \
-  -v /path/to/src:/app -w /app \
+docker run --rm \
+  -v "$PWD":/app -w /app \
   golang:1.27-bookworm go test -tags=e2e ./internal/e2e/... ./internal/service/e2e/...'
 ```
 
@@ -105,9 +100,8 @@ running bridge in the consumer's exact wire shape (token =
    `claude -p "Reply with exactly: OK" --model sonnet` (and `haiku`).
 3. **LibreChat / Affiora shape** — `POST /v1/chat/completions`, non-stream and
    streaming, with tools (arguments must be JSON **strings**) → verify from
-   inside the LibreChat container against `host.docker.internal:38440`, and
-   from inside the affiora container against `http://provider-bridge:38440`
-   (AI SDK datastream).
+   inside a consumer container, using the connection target that matches its
+   network position (see the table in [CONSUMERS.md](CONSUMERS.md)).
 4. **Models** — `GET /v1/models` → OpenAI `object`/`data[]` with slug ids,
    deduplicated against route aliases.
 5. **Web search** — a `web_search` tool request through `/v1/messages` or
