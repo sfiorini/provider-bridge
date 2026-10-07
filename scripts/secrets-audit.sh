@@ -67,8 +67,12 @@ RE_HARD='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]*[0-9][A-Za-z0-9_-]{
 # plan; a bot_token VALUE is high-confidence and caught by RE_HARD anyway.
 # aws_secret_access_key/secret_access_key cover the AWS secret-key half
 # (only the AKIA id half is high-confidence); POSIX leftmost-longest makes
-# the longer alternative win over the inner `secret` substring.
-RE_INFO="(api_key|apikey|aws_secret_access_key|secret_access_key|api_token|auth_token|access_token|bot_token|database_url|dsn|secret|password|passwd)[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_./+=-]{8,}"
+# the longer alternative win over the inner `secret` substring. The value
+# class includes : and @ so a URL/DSN-embedded credential (scheme://
+# user:pass@host) surfaces WHOLE in the masked REVIEW line instead of
+# truncating at the first : (which masked only the scheme prefix - the
+# password never reached the eyeball pass).
+RE_INFO="(api_key|apikey|aws_secret_access_key|secret_access_key|api_token|auth_token|access_token|bot_token|database_url|dsn|secret|password|passwd)[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9_./+=:@-]{8,}"
 
 # Placeholder markers: a REVIEW candidate whose matched text contains one of
 # these word-boundary markers (or a <...> / ${...} template) is downgraded to
@@ -291,7 +295,7 @@ p
 '
 
 scan() { # scans the repository at $PWD
-    local tmp seen hits keys f commit r path lineno content raw kind body line key rc revs tag tag_esc files
+    local tmp seen hits keys f commit r path lineno content raw kind body line key rc revs tag tag_esc files batch nb
     tmp="$(mktemp -d)"
     seen="$(mktemp -d)"
     hits="$tmp/hits"
@@ -299,6 +303,7 @@ scan() { # scans the repository at $PWD
     revs="$tmp/revs"
     files="$tmp/files"
     body="$tmp/body"
+    raw="$tmp/raw"
     : > "$hits"
 
     # A collection stage that ERRORS must abort loudly (exit 3) and never
@@ -323,12 +328,30 @@ scan() { # scans the repository at $PWD
     rc=0
     git ls-files -z --cached --others --exclude-standard > "$files" || rc="$?"
     [ "$rc" -le 1 ] || fail_loud "git ls-files failed (exit $rc)"
+    # NOTE (accepted residual, documented by design): `grep -I` skips
+    # binary blobs, so a credential inside a committed binary is not
+    # scanned here; release assets are separately covered by the M2
+    # `strings` pass over the built archives and binaries. Stripe
+    # sk_live_/rk_ underscore shapes also stay out of RE_HARD (see the
+    # RE_HARD comment: measured +30s for zero findings, no Stripe
+    # integration) - a Stripe key committed today is invisible to this
+    # gate; revisit if a Stripe integration lands.
     while IFS= read -r -d '' f; do
         [ -f "$f" ] || continue
         rc=0
-        grep -H -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$f" \
-            | sed 's/^/TREE|/' >> "$hits" || rc="$?"
+        grep -H -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$f" > "$raw" || rc="$?"
         [ "$rc" -le 1 ] || fail_loud "working-tree scan failed for $f (grep exit $rc)"
+        # The write side is checked SEPARATELY from grep: in the previous
+        # `grep | sed >> $hits` pipeline `set -o pipefail` folded both
+        # commands' statuses into one rc, and BSD sed exits 1 when it
+        # cannot write $hits (e.g. disk full) - indistinguishable from
+        # grep's legitimate "no match" exit 1 - so the rc<=1 check
+        # ACCEPTED the failure and silently dropped the just-matched
+        # lines while the gate still printed CLEAN. grep's exit 1 ("no
+        # match") stays allowed here; ANY sed error is fatal.
+        rc=0
+        sed 's/^/TREE|/' "$raw" >> "$hits" || rc="$?"
+        [ "$rc" -eq 0 ] || fail_loud "working-tree scan write failed for $f (sed exit $rc)"
     done < "$files"
 
     # Annotated tag messages are public (release page) and must go through
@@ -350,15 +373,19 @@ scan() { # scans the repository at $PWD
         # ref mutated between the list and the read) was masked by the
         # grep's "no match" exit 1 - the `rc <= 1` check read a real error
         # as "no match" and a repo with unreadable tag messages printed
-        # CLEAN. The grep|sed pipeline below stays 2-stage: sed always
-        # exits 0, so a grep ERROR (>= 2) can never be masked either.
+        # CLEAN. The grep and sed halves below are likewise checked
+        # SEPARATELY: pipefail would fold a sed write ERROR (BSD sed exits
+        # 1 when $hits is unwritable) into the same rc as grep's "no
+        # match" exit 1, silently dropping just-matched lines.
         rc=0
         git for-each-ref --format='%(contents)' "$tag" < /dev/null > "$body" || rc="$?"
         [ "$rc" -eq 0 ] || fail_loud "tag-message read failed for $tag (git for-each-ref exit $rc)"
         rc=0
-        grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" \
-            | sed "s~^~TAG|$tag_esc:~" >> "$hits" || rc="$?"
-        [ "$rc" -le 1 ] || fail_loud "tag-message scan failed for $tag (exit $rc)"
+        grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" > "$raw" || rc="$?"
+        [ "$rc" -le 1 ] || fail_loud "tag-message scan failed for $tag (grep exit $rc)"
+        rc=0
+        sed "s~^~TAG|$tag_esc:~" "$raw" >> "$hits" || rc="$?"
+        [ "$rc" -eq 0 ] || fail_loud "tag-message scan write failed for $tag (sed exit $rc)"
     done < "$revs.tags"
 
     rc=0
@@ -366,10 +393,36 @@ scan() { # scans the repository at $PWD
     [ "$rc" -eq 0 ] || fail_loud "git rev-list --all failed (exit $rc)"
     if [ -s "$revs" ]; then
         echo "scan: full history ($(wc -l < "$revs" | tr -d ' ') commits)" >&2
-        rc=0
-        git grep -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" $(cat "$revs") -- \
-            | sed 's/^/HIST|/' >> "$hits" || rc="$?"
-        [ "$rc" -le 1 ] || fail_loud "history scan failed (git grep exit $rc)"
+        # The revs are fed to git grep in bounded batches (~500 SHAs,
+        # ~21 KB of argv) instead of one unquoted `$(cat "$revs")`
+        # expansion: macOS ARG_MAX (~256 KB) made the single-call form
+        # fail closed (exit 3) once history reached ~6k commits. Per
+        # batch, git grep's exit 1 ("no match") stays allowed and the
+        # write side is fail-closed exactly like the tree stage above
+        # (grep and sed statuses are checked separately: pipefail folds
+        # a sed write ERROR into the same rc as a "no match", silently
+        # dropping just-matched lines while still printing CLEAN).
+        hist_scan() { # <space-separated rev batch>
+            local rc
+            rc=0
+            git grep -I -n -i -E -e "$RE_HARD" -e "$RE_INFO" $1 -- > "$raw" || rc="$?"
+            [ "$rc" -le 1 ] || fail_loud "history scan failed (git grep exit $rc)"
+            rc=0
+            sed 's/^/HIST|/' "$raw" >> "$hits" || rc="$?"
+            [ "$rc" -eq 0 ] || fail_loud "history scan write failed (sed exit $rc)"
+        }
+        batch="" nb=0
+        while IFS= read -r commit; do
+            batch="$batch $commit"
+            nb=$((nb + 1))
+            if [ "$nb" -ge 500 ]; then
+                hist_scan "$batch"
+                batch=""; nb=0
+            fi
+        done < "$revs"
+        if [ -n "$batch" ]; then
+            hist_scan "$batch"
+        fi
         echo "scan: commit messages" >&2
         while IFS= read -r commit; do
             # Fail-closed read, same as the tag stage above: the message is
@@ -380,9 +433,11 @@ scan() { # scans the repository at $PWD
             git log -1 --format='%B' "$commit" < /dev/null > "$body" || rc="$?"
             [ "$rc" -eq 0 ] || fail_loud "commit-message read failed for $commit (git log exit $rc)"
             rc=0
-            grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" \
-                | sed "s/^/MSG|$commit:/" >> "$hits" || rc="$?"
-            [ "$rc" -le 1 ] || fail_loud "commit-message scan failed for $commit (exit $rc)"
+            grep -n -i -E -e "$RE_HARD" -e "$RE_INFO" -- "$body" > "$raw" || rc="$?"
+            [ "$rc" -le 1 ] || fail_loud "commit-message scan failed for $commit (grep exit $rc)"
+            rc=0
+            sed "s/^/MSG|$commit:/" "$raw" >> "$hits" || rc="$?"
+            [ "$rc" -eq 0 ] || fail_loud "commit-message scan write failed for $commit (sed exit $rc)"
         done < "$revs"
     fi
 
@@ -443,7 +498,7 @@ scan() { # scans the repository at $PWD
 }
 
 self_test() {
-    local tmp tmp2 tmp3 tmp4 tmp5 realgit fake out tg awsv rc
+    local tmp tmp2 tmp3 tmp4 tmp5 tmp6 realgit realsed fake out tg awsv rc
     tmp="$(mktemp -d)" || return 2
     fake="sk-ant-self""test-0123456789abcdefghij"
     out="$tmp/out"
@@ -541,7 +596,9 @@ self_test() {
     #  so an errored scan fails the step instead of passing it)
     ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
     grep -Fq '1234...K6sX' "$out" || { echo "self-test FAIL: Telegram bot-token shape must be DIRTY" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
-    grep -Fq 'DATA...gres' "$out" || { echo "self-test FAIL: database_url assignment must be reported (REVIEW)" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    # (the widened value class means the WHOLE URL is the masked match:
+    # DATA.../app, not the old truncated DATA...gres)
+    grep -Fq 'DATA.../app' "$out" || { echo "self-test FAIL: database_url assignment must be reported with the URL-shaped value whole (REVIEW, match=DATA.../app)" >&2; sed -n '1,20p' "$out" >&2; rm -rf "$tmp"; return 1; }
     if grep -Fq -- "$tg" "$out"; then echo "self-test FAIL: full token value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
 
     # 9) every RE_INFO candidate on a line must be reported, not just the
@@ -670,6 +727,36 @@ SHIM
     ( cd "$tmp" && "$SELF" --gate ) > "$out" 2>&1 || true
     grep -Eq '^REVIEW.*aws_...lKeY' "$out" || { echo "self-test FAIL: aws_secret_access_key assignment must be reported (REVIEW)" >&2; sed -n '1,25p' "$out" >&2; rm -rf "$tmp"; return 1; }
     if grep -Fq -- "$awsv" "$out"; then echo "self-test FAIL: full secret value printed (masking broken)" >&2; rm -rf "$tmp"; return 1; fi
+
+    # 16) fail-closed WRITE side of a collection stage: in the old
+    #     `grep | sed >> $hits` pipeline, BSD sed exits 1 when the write
+    #     to $hits fails (disk full), and pipefail folded it into the same
+    #     rc as grep's legitimate "no match" exit 1 - the rc<=1 check
+    #     ACCEPTED the failure and silently dropped the just-MATCHED
+    #     lines while the gate still printed CLEAN. A PATH shim forces
+    #     the tree-stage sed to exit 1 on a repo whose ONLY finding is a
+    #     working-tree credential assignment that grep DID match: the
+    #     stage must abort with exit 3 and a write diagnostic, never a
+    #     verdict. (The fixture below is split `pass""word` so this
+    #     script's own source cannot trip RE_INFO once the gate scans
+    #     itself.)
+    realsed="$(command -v sed)" || { rm -rf "$tmp"; return 2; }
+    tmp6="$(mktemp -d)" || { rm -rf "$tmp"; return 2; }
+    git -C "$tmp6" init -q
+    printf 'pass""word: realp4ssword9\n' > "$tmp6/app.yml"
+    mkdir "$tmp6/shim"
+    cat > "$tmp6/shim/sed" <<'SHIM'
+#!/bin/sh
+if [ "$1" = 's/^/TREE|/' ]; then exit 1; fi
+exec "$REAL_SED" "$@"
+SHIM
+    chmod +x "$tmp6/shim/sed"
+    rc=0
+    ( cd "$tmp6" && PATH="$tmp6/shim:$PATH" REAL_SED="$realsed" "$SELF" --gate ) > "$out" 2>&1 || rc="$?"
+    rm -rf "$tmp6"
+    [ "$rc" -eq 3 ] || { echo "self-test FAIL: tree-stage write failure must exit 3 (got $rc), never a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    grep -Fq 'error: secrets-audit: working-tree scan write failed' "$out" || { echo "self-test FAIL: expected a working-tree write diagnostic" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; }
+    if grep -q 'SECRETS AUDIT:' "$out"; then echo "self-test FAIL: write-failed scan must not print a verdict" >&2; sed -n '1,10p' "$out" >&2; rm -rf "$tmp"; return 1; fi
 
     rm -rf "$tmp"
     echo "secrets-audit self-test: OK"
