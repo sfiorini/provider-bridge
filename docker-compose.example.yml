@@ -1,9 +1,12 @@
 services:
   providerbridge:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: providerbridge:local
+    # Default: prebuilt release image from GHCR.
+    image: ghcr.io/sfiorini/provider-bridge:v0.1.0
+    # Local build alternative:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    # image: providerbridge:local
     container_name: providerbridge
     restart: unless-stopped
     command:
