@@ -37,6 +37,7 @@ still being written are marked **planned**.
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Dev setup, project tree, build, Web Console development, adding a provider or inbound adapter |
 | [DEVELOPMENT-CONVENTIONS.md](DEVELOPMENT-CONVENTIONS.md) | Package layout, dependency direction, naming, error handling, logging, config evolution, testing rules |
 | [TESTING.md](TESTING.md) | Test tiers (unit, protocol e2e, service e2e, management API) and the live wire-shape verification matrix |
+| [RELEASE.md](RELEASE.md) | Versioning, cutting a release, tag → CI → GHCR → GitHub Release flow |
 | [webui/MATERIAL-COMPONENT-DEBT.md](webui/MATERIAL-COMPONENT-DEBT.md) | Web UI Material-Web migration backlog and review requirements |
 
 ## Deployment
