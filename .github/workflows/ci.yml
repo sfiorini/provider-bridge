@@ -140,8 +140,20 @@ jobs:
       - name: Download all build artifacts
         uses: actions/download-artifact@v8
         with:
-          path: dist
-          merge-multiple: true
+          path: artifacts
+
+      - name: Assemble release assets
+        run: |
+          mkdir -p dist
+          # *.tar.gz artifacts are stored raw and download as-is.
+          find artifacts -type f -name '*.tar.gz' -exec cp {} dist/ \;
+          # download-artifact extracts *.zip artifacts, so re-create the Windows
+          # archives from their extracted binaries.
+          for d in artifacts/providerbridge_windows_*; do
+            [ -d "$d" ] || continue
+            zip -qj "dist/$(basename "$d")" "$d"/*.exe
+          done
+          ls -l dist
 
       - name: Build and push Docker image to GHCR
         env:
