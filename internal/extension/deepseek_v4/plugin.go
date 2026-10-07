@@ -541,14 +541,27 @@ func coreBlockToAnthropic(b format.CoreContentBlock) anthropic.ContentBlock {
 			Content:   coreBlocksToAnthropic(b.ToolResultContent),
 		}
 	case "image":
-		return anthropic.ContentBlock{
-			Type: "image",
-			Source: &anthropic.ImageSource{
-				Type:      "base64",
-				Data:      b.ImageData,
-				MediaType: b.MediaType,
-			},
+		mediaType, payload, isURL, ok := format.SplitImageSource(b)
+		if !ok {
+			// No image payload: preserve the previous pass-through shape.
+			return anthropic.ContentBlock{
+				Type: "image",
+				Source: &anthropic.ImageSource{
+					Type:      "base64",
+					Data:      b.ImageData,
+					MediaType: b.MediaType,
+				},
+			}
 		}
+		src := &anthropic.ImageSource{MediaType: mediaType}
+		if isURL {
+			src.Type = "url"
+			src.URL = payload
+		} else {
+			src.Type = "base64"
+			src.Data = payload
+		}
+		return anthropic.ContentBlock{Type: "image", Source: src}
 	default:
 		return anthropic.ContentBlock{Type: "text", Text: b.Text}
 	}

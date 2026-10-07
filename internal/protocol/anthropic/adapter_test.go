@@ -177,6 +177,91 @@ func TestFromCoreRequest_Tools(t *testing.T) {
 		t.Errorf("tool type = %q, want empty (Anthropic custom tools have no type field)", msgReq.Tools[0].Type)
 	}
 }
+
+// TestFromCoreRequest_ImageSourceNormalisation guards the fix for images that
+// arrive from the chat/responses inbounds as full data URLs. Passing a data URL
+// through as if it were raw base64 made Anthropic-protocol upstreams (DeepSeek)
+// reject the request with HTTP 400 "base64 decode error".
+func TestFromCoreRequest_ImageSourceNormalisation(t *testing.T) {
+	tests := []struct {
+		name      string
+		imageData string
+		mediaType string
+		wantType  string
+		wantData  string
+		wantURL   string
+		wantMedia string
+	}{
+		{
+			name:      "data URL is split into base64 payload and media type",
+			imageData: "data:image/png;base64,AAAA",
+			wantType:  "base64",
+			wantData:  "AAAA",
+			wantMedia: "image/png",
+		},
+		{
+			name:      "data URL header wins over a conflicting MediaType",
+			imageData: "data:image/webp;base64,CCCC",
+			mediaType: "image/png",
+			wantType:  "base64",
+			wantData:  "CCCC",
+			wantMedia: "image/webp",
+		},
+		{
+			name:      "https URL becomes a url source",
+			imageData: "https://example.com/a.png",
+			wantType:  "url",
+			wantURL:   "https://example.com/a.png",
+		},
+		{
+			name:      "raw base64 with MediaType is unchanged",
+			imageData: "base64data",
+			mediaType: "image/jpeg",
+			wantType:  "base64",
+			wantData:  "base64data",
+			wantMedia: "image/jpeg",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter := newTestAdapter()
+			coreReq := &format.CoreRequest{
+				Model: "claude-sonnet-4",
+				Messages: []format.CoreMessage{{
+					Role: "user",
+					Content: []format.CoreContentBlock{
+						{Type: "image", ImageData: tt.imageData, MediaType: tt.mediaType},
+					},
+				}},
+			}
+			result, err := adapter.FromCoreRequest(context.Background(), coreReq)
+			if err != nil {
+				t.Fatal(err)
+			}
+			msgReq := result.(*anthropic.MessageRequest)
+			if len(msgReq.Messages[0].Content) != 1 {
+				t.Fatalf("got %d content blocks, want 1", len(msgReq.Messages[0].Content))
+			}
+			src := msgReq.Messages[0].Content[0].Source
+			if src == nil {
+				t.Fatal("image block has nil Source")
+			}
+			if src.Type != tt.wantType {
+				t.Errorf("source.type = %q, want %q", src.Type, tt.wantType)
+			}
+			if src.Data != tt.wantData {
+				t.Errorf("source.data = %q, want %q", src.Data, tt.wantData)
+			}
+			if src.URL != tt.wantURL {
+				t.Errorf("source.url = %q, want %q", src.URL, tt.wantURL)
+			}
+			if tt.wantMedia != "" && src.MediaType != tt.wantMedia {
+				t.Errorf("source.media_type = %q, want %q", src.MediaType, tt.wantMedia)
+			}
+		})
+	}
+}
+
 func TestFromCoreRequest_ImageMessage(t *testing.T) {
 	adapter := newTestAdapter()
 

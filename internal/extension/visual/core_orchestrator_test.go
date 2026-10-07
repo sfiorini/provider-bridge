@@ -10,6 +10,71 @@ import (
 	"providerbridge/internal/format"
 )
 
+// TestCoreOrchestratorOffersVisualTools guards the fix for visual assist being
+// inert on the Core executor paths (/v1/messages, /v1/chat/completions): the
+// orchestrator rewrites the image into the "available to Visual Brief"
+// placeholder, so unless it also OFFERS those tools the upstream model can never
+// ask for an analysis and instead replies that it cannot see the image.
+func TestCoreOrchestratorOffersVisualTools(t *testing.T) {
+	upstream := &fakeCoreUpstream{responses: []*format.CoreResponse{{
+		ID:         "resp",
+		Status:     "completed",
+		StopReason: "end_turn",
+		Messages: []format.CoreMessage{{
+			Role:    "assistant",
+			Content: []format.CoreContentBlock{{Type: "text", Text: "ok"}},
+		}},
+	}}}
+	orch := NewCoreBridge(upstream, &fakeCoreVision{text: "a brief"}, "vision-model", 4, 2048)
+
+	req := &format.CoreRequest{
+		Model: "text-only-model",
+		Messages: []format.CoreMessage{{
+			Role: "user",
+			Content: []format.CoreContentBlock{
+				{Type: "text", Text: "what is this?"},
+				{Type: "image", ImageData: "data:image/png;base64,AAAA", MediaType: "image/png"},
+			},
+		}},
+	}
+	if _, err := orch.CreateCore(context.Background(), req); err != nil {
+		t.Fatalf("CreateCore: %v", err)
+	}
+	if len(upstream.requests) == 0 {
+		t.Fatal("upstream was never called")
+	}
+	names := map[string]bool{}
+	for _, tool := range upstream.requests[0].Tools {
+		names[tool.Name] = true
+	}
+	if !names[ToolVisualBrief] {
+		t.Errorf("upstream was not offered %s; got tools %v", ToolVisualBrief, names)
+	}
+	if !names[ToolVisualQA] {
+		t.Errorf("upstream was not offered %s; got tools %v", ToolVisualQA, names)
+	}
+}
+
+// TestEnsureVisualToolsDoesNotDuplicate keeps the Responses inbound (which
+// already injects the visual tools) from receiving them twice.
+func TestEnsureVisualToolsDoesNotDuplicate(t *testing.T) {
+	in := []format.CoreTool{{Name: ToolVisualBrief}, {Name: "web_search"}}
+	out := ensureVisualTools(in)
+
+	briefs := 0
+	for _, tool := range out {
+		if tool.Name == ToolVisualBrief {
+			briefs++
+		}
+	}
+	if briefs != 1 {
+		t.Errorf("%s appears %d times, want 1", ToolVisualBrief, briefs)
+	}
+	if len(out) != 3 {
+		t.Errorf("got %d tools, want 3 (%v)", len(out), out)
+	}
+}
+
 // fakeCoreUpstream implements CoreProvider for testing the core orchestrator.
 type fakeCoreUpstream struct {
 	responses []*format.CoreResponse

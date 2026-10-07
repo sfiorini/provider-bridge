@@ -807,14 +807,27 @@ func (a *AnthropicProviderAdapter) toContentBlock(b format.CoreContentBlock) Con
 		return block
 
 	case "image":
-		return ContentBlock{
-			Type: "image",
-			Source: &ImageSource{
-				Type:      "base64",
-				Data:      b.ImageData,
-				MediaType: b.MediaType,
-			},
+		mediaType, payload, isURL, ok := format.SplitImageSource(b)
+		if !ok {
+			// No image payload: preserve the previous pass-through shape.
+			return ContentBlock{
+				Type: "image",
+				Source: &ImageSource{
+					Type:      "base64",
+					Data:      b.ImageData,
+					MediaType: b.MediaType,
+				},
+			}
 		}
+		src := &ImageSource{MediaType: mediaType}
+		if isURL {
+			src.Type = "url"
+			src.URL = payload
+		} else {
+			src.Type = "base64"
+			src.Data = payload
+		}
+		return ContentBlock{Type: "image", Source: src}
 
 	case "tool_use":
 		return ContentBlock{
