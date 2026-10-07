@@ -1,7 +1,7 @@
 # Provider Bridge Documentation
 
 Provider Bridge is a self-hosted, multi-protocol AI model gateway. One process,
-one config, and one token put every AI consumer in the homelab in front of every
+one config, and one token put every AI consumer in your network in front of every
 model provider. Consumers keep speaking their native wire protocol — OpenAI
 Responses, Anthropic Messages, or Chat Completions — and the bridge translates
 all of them through one internal representation ("Core") to any upstream
@@ -43,17 +43,7 @@ still being written are marked **planned**.
 
 | Document | What it covers |
 |----------|----------------|
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Binary, systemd, nginx, Docker/compose, Cloudflare Workers, config management, homelab gotchas |
-
-### Deployment runbooks
-
-| Document | What it covers |
-|----------|----------------|
-| [deploy/mini/PATCHES.md](../deploy/mini/PATCHES.md) | Deployment runbook for the mini host, including rollback |
-| [deploy/mini/update.sh](../deploy/mini/update.sh) | Pull the repo and redeploy the mini container |
-| [deploy/mini/codex_regen.sh](../deploy/mini/codex_regen.sh) | Regenerate Codex `config.toml` and `models_catalog.json` from the bridge |
-| [deploy/mini/MODEL-METADATA-RUNBOOK.md](../deploy/mini/MODEL-METADATA-RUNBOOK.md) | Reconcile live model metadata with the verified `INVENTORY.md` values |
-| [deploy/mini/RENAME-CUTOVER.md](../deploy/mini/RENAME-CUTOVER.md) | Runtime rename cutover runbook (legacy name → `providerbridge`) |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Binary, systemd, nginx, Docker/compose, Cloudflare Workers, config management, deployment gotchas |
 
 ## Related
 
