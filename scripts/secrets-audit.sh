@@ -46,7 +46,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --gate) GATE=1; shift ;;
         --self-test) SELF_TEST=1; shift ;;
-        -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+        -h|--help) awk 'NR==1{next} !/^#/{exit 0} {print}' "$0"; exit 0 ;;
         *) echo "unknown flag: $1 (usage: scripts/secrets-audit.sh [--gate] [--self-test])" >&2; exit 2 ;;
     esac
 done
