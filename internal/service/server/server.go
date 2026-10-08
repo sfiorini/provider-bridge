@@ -244,20 +244,6 @@ func (s *Server) cacheGoogleClient(mgr *provider.ProviderManager, providerKey st
 	return true
 }
 
-// chatAPIKey returns the API key a plain chat client for providerKey must
-// use: the ACTIVE key — never the raw comma-separated list.
-func (s *Server) chatAPIKey(providerKey string) string {
-	if pm := s.activeProviderManager(); pm != nil {
-		if k := pm.ProviderAPIKey(providerKey); k != "" {
-			return k
-		}
-	}
-	// No usable manager key: fail closed. The raw def.APIKey may be a
-	// comma-separated list, and putting it into an Authorization header
-	// would leak every key.
-	return ""
-}
-
 // chatClientIndex returns the *chat.Client for the provider's API key at
 // rotation index idx, building and caching it on first use. Cache entries
 // are keyed "<provider>\x00<idx>" in s.clientCache.
@@ -345,6 +331,15 @@ func (s *Server) activeGoogleClient(providerKey string) any {
 	// reload cannot pair a pre-reload BaseURL with a post-reload key —
 	// see activeChatClient for the mismatch rationale.
 	mgr := snap.ProviderMgr
+	if mgr == nil {
+		// The snapshot has no manager (runtime booted without one) but
+		// the server was booted with one: source the key from the boot
+		// manager, matching activeProviderManager's fallback. Otherwise
+		// def.APIKey — the raw comma-separated list — would leak every
+		// key into the ?key= query param. Both-nil keeps def.APIKey,
+		// identical to pre-R6 (test-only state).
+		mgr = s.providerMgr
+	}
 	apiKey := def.APIKey
 	if mgr != nil {
 		// Google-genai clients are built from the ACTIVE API key. Google

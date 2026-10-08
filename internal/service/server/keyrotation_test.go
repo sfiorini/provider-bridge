@@ -407,24 +407,69 @@ func TestChatClientsUseManagerHTTPClient(t *testing.T) {
 	}
 }
 
-// TestChatAPIKeyFailsClosedWithoutManager checks that chatAPIKey never
-// falls back to the raw provider-def APIKey string (which may be a
-// comma-separated list): without a usable manager key it returns "".
-func TestChatAPIKeyFailsClosedWithoutManager(t *testing.T) {
+// TestActiveGoogleClientUsesBootManagerKeyWhenSnapshotMgrNil checks that
+// when the runtime snapshot has NO provider manager (nil ProviderMgr) but
+// the Server was booted with one (Config.ProviderMgr), activeGoogleClient
+// sources the API key from the boot manager: the ACTIVE single key, never
+// the raw comma-separated def.APIKey list (which would leak every key into
+// the ?key= query param).
+func TestActiveGoogleClientUsesBootManagerKeyWhenSnapshotMgrNil(t *testing.T) {
+	upstream, rec := newGoogleKeyUpstream()
+	defer upstream.Close()
+
 	cfg := config.Config{
 		Mode: config.ModeTransform,
 		ProviderDefs: map[string]config.ProviderDef{
-			"main": {
-				BaseURL:  "http://upstream.test",
+			"goog": {
+				BaseURL:  upstream.URL,
 				APIKey:   "k1,k2",
-				Protocol: config.ProtocolOpenAIChat,
+				Protocol: config.ProtocolGoogleGenAI,
 				Models:   map[string]config.ModelMeta{"m": {}},
 			},
 		},
 	}
-	srv := New(Config{Runtime: runtime.NewRuntime(cfg, nil, nil)})
-	if k := srv.chatAPIKey("main"); k != "" {
-		t.Fatalf("chatAPIKey(main) = %q, want empty (fail closed, never the raw list)", k)
+	// Boot manager parses the same multi-key list; the runtime snapshot
+	// deliberately has NO manager (nil ProviderMgr) so activeGoogleClient
+	// must fall back to the boot s.providerMgr for the key.
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"goog": {
+				BaseURL:    upstream.URL,
+				APIKey:     "k1,k2",
+				Protocol:   config.ProtocolGoogleGenAI,
+				ModelNames: []string{"m"},
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	srv := New(Config{ProviderMgr: pm, Runtime: runtime.NewRuntime(cfg, nil, nil)})
+
+	raw := srv.activeGoogleClient("goog")
+	g, ok := raw.(*google.Client)
+	if !ok {
+		t.Fatalf("activeGoogleClient(goog) = %T, want *google.Client", raw)
+	}
+	if _, err := g.GenerateContent(context.Background(), "m", &google.GenerateContentRequest{}); err != nil {
+		t.Fatalf("GenerateContent() error = %v", err)
+	}
+	keys := rec.snapshot()
+	if len(keys) != 1 {
+		t.Fatalf("upstream saw %d requests, want 1", len(keys))
+	}
+	if keys[0] != "k1" {
+		t.Fatalf("google client sent ?key=%q, want %q (boot manager's ACTIVE key, never the raw list)", keys[0], "k1")
+	}
+
+	// The boot-manager client must also be cacheable: the live-manager
+	// guard (activeProviderManager) falls back to s.providerMgr too.
+	srv.googleCacheMu.RLock()
+	cached := srv.googleCache["goog"]
+	srv.googleCacheMu.RUnlock()
+	if cached == nil {
+		t.Fatal("googleCache[goog] = nil, want the boot-manager client cached")
 	}
 }
 
