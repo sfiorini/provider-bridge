@@ -1,7 +1,10 @@
 // Package chat implements the OpenAI Chat Completions ProviderAdapter for ProviderBridge.
 package chat
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // ============================================================================
 // Request DTOs
@@ -178,4 +181,53 @@ type Delta struct {
 	// ReasoningContent is used by providers like DeepSeek to stream
 	// chain-of-thought reasoning. Must be passed back in follow-up messages.
 	ReasoningContent string `json:"reasoning_content,omitempty"`
+}
+
+// UnmarshalJSON tolerates both shapes of delta.content: the plain string
+// form and the block-array form some OpenAI-compatible upstreams emit.
+// Text blocks concatenate into Content in wire order; thinking blocks
+// (string or array form) concatenate into ReasoningContent. Unknown block
+// types are skipped. Anything else returns an error — the stream reader
+// drops that chunk with today's Warn+continue.
+func (d *Delta) UnmarshalJSON(data []byte) error {
+	type wireDelta struct {
+		Role             string          `json:"role"`
+		Content          json.RawMessage `json:"content"`
+		ToolCalls        []ToolCall      `json:"tool_calls"`
+		ReasoningContent string          `json:"reasoning_content"`
+	}
+	var w wireDelta
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	d.Role, d.ToolCalls, d.ReasoningContent, d.Content = w.Role, w.ToolCalls, w.ReasoningContent, ""
+	if len(w.Content) == 0 || string(w.Content) == "null" {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(w.Content, &s); err == nil {
+		d.Content = s
+		return nil
+	}
+	var blocks []map[string]json.RawMessage
+	if err := json.Unmarshal(w.Content, &blocks); err != nil {
+		return fmt.Errorf("delta content must be a string or an array of content blocks: %w", err)
+	}
+	for _, b := range blocks {
+		var typ string
+		if raw, ok := b["type"]; ok {
+			_ = json.Unmarshal(raw, &typ)
+		}
+		switch typ {
+		case "text":
+			var text string
+			if raw, ok := b["text"]; ok {
+				_ = json.Unmarshal(raw, &text)
+			}
+			d.Content += text
+		case "thinking":
+			d.ReasoningContent += extractThinkingText(b["thinking"])
+		}
+	}
+	return nil
 }

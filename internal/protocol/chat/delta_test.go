@@ -1,0 +1,93 @@
+package chat
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+// TestDeltaUnmarshalJSON covers tolerant decoding of delta.content in both
+// the plain string form and the block-array form (issue #11).
+func TestDeltaUnmarshalJSON(t *testing.T) {
+	t.Run("plain string content", func(t *testing.T) {
+		var d Delta
+		if err := json.Unmarshal([]byte(`{"content":"PONG"}`), &d); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if d.Content != "PONG" {
+			t.Fatalf("Content = %q, want %q", d.Content, "PONG")
+		}
+	})
+
+	t.Run("issue-shaped array content", func(t *testing.T) {
+		var d Delta
+		raw := `{"role":"assistant","content":[{"type":"thinking","thinking":[{"text":"hmm"}]},{"type":"text","text":"PONG"}]}`
+		if err := json.Unmarshal([]byte(raw), &d); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if d.Role != "assistant" {
+			t.Fatalf("Role = %q, want %q", d.Role, "assistant")
+		}
+		if d.Content != "PONG" {
+			t.Fatalf("Content = %q, want %q", d.Content, "PONG")
+		}
+		if d.ReasoningContent != "hmm" {
+			t.Fatalf("ReasoningContent = %q, want %q", d.ReasoningContent, "hmm")
+		}
+	})
+
+	t.Run("thinking as string", func(t *testing.T) {
+		var d Delta
+		raw := `{"role":"assistant","content":[{"type":"thinking","thinking":"why"}]}`
+		if err := json.Unmarshal([]byte(raw), &d); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if d.ReasoningContent != "why" {
+			t.Fatalf("ReasoningContent = %q, want %q", d.ReasoningContent, "why")
+		}
+		if d.Content != "" {
+			t.Fatalf("Content = %q, want empty", d.Content)
+		}
+	})
+
+	t.Run("two text blocks concatenate", func(t *testing.T) {
+		var d Delta
+		raw := `{"content":[{"type":"text","text":"A"},{"type":"text","text":"B"}]}`
+		if err := json.Unmarshal([]byte(raw), &d); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if d.Content != "AB" {
+			t.Fatalf("Content = %q, want %q", d.Content, "AB")
+		}
+	})
+
+	t.Run("role only yields empty fields", func(t *testing.T) {
+		var d Delta
+		if err := json.Unmarshal([]byte(`{"role":"assistant"}`), &d); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if d.Role != "assistant" || d.Content != "" || d.ReasoningContent != "" || len(d.ToolCalls) != 0 {
+			t.Fatalf("unexpected delta: %+v", d)
+		}
+	})
+
+	t.Run("tool_calls pass through", func(t *testing.T) {
+		var d Delta
+		raw := `{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"f","arguments":"{}"}}]}`
+		if err := json.Unmarshal([]byte(raw), &d); err != nil {
+			t.Fatalf("unmarshal error: %v", err)
+		}
+		if len(d.ToolCalls) != 1 {
+			t.Fatalf("ToolCalls len = %d, want 1", len(d.ToolCalls))
+		}
+		if d.Content != "" {
+			t.Fatalf("Content = %q, want empty", d.Content)
+		}
+	})
+
+	t.Run("non-string non-array content errors", func(t *testing.T) {
+		var d Delta
+		if err := json.Unmarshal([]byte(`{"content":true}`), &d); err == nil {
+			t.Fatalf("expected error, got none")
+		}
+	})
+}
