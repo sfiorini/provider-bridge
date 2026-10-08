@@ -3,6 +3,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	"providerbridge/internal/config"
+	"providerbridge/internal/format"
+	"providerbridge/internal/protocol/anthropic"
 	"providerbridge/internal/protocol/chat"
 	"providerbridge/internal/service/provider"
 	"providerbridge/internal/service/runtime"
@@ -214,5 +217,299 @@ func TestActiveChatCallerSingleKeyPlain(t *testing.T) {
 	}
 	if plain != injected {
 		t.Fatal("activeChatCaller(main) returned a different client, want the injected one")
+	}
+}
+
+// keyRecorder records upstream API keys in arrival order (thread-safe).
+type keyRecorder struct {
+	mu   sync.Mutex
+	keys []string
+}
+
+func (k *keyRecorder) record(key string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.keys = append(k.keys, key)
+}
+
+func (k *keyRecorder) count() int {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return len(k.keys)
+}
+
+func (k *keyRecorder) snapshot() []string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	out := make([]string, len(k.keys))
+	copy(out, k.keys)
+	return out
+}
+
+func equalKeys(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// newRotationRegistry builds a dispatch registry with the inbound client
+// adapter for the given inbound protocol registered alongside the provider
+// adapter (newDispatchRegistry only registers inbound OpenAI-responses).
+func newRotationRegistry(t *testing.T, protocol string) *format.Registry {
+	t.Helper()
+	reg := newDispatchRegistry(t, protocol)
+	hooks := format.CorePluginHooks{}.WithDefaults()
+	switch protocol {
+	case config.ProtocolAnthropic:
+		adapter := anthropic.NewAnthropicClientAdapter(hooks)
+		if err := reg.RegisterClient(adapter); err != nil {
+			t.Fatalf("RegisterClient(anthropic inbound): %v", err)
+		}
+		if err := reg.RegisterClientStream(adapter); err != nil {
+			t.Fatalf("RegisterClientStream(anthropic inbound): %v", err)
+		}
+	case config.ProtocolOpenAIChat:
+		adapter := chat.NewChatClientAdapter(hooks)
+		if err := reg.RegisterClient(adapter); err != nil {
+			t.Fatalf("RegisterClient(chat inbound): %v", err)
+		}
+		if err := reg.RegisterClientStream(adapter); err != nil {
+			t.Fatalf("RegisterClientStream(chat inbound): %v", err)
+		}
+	}
+	return reg
+}
+
+// TestCoreUpstreamAnthropicRotation drives a non-streaming POST /v1/messages
+// through the public handler with a multi-key anthropic provider: the first
+// key returns 429, the second returns a valid MessageResponse. Rotation must
+// happen inside the manager's rotating upstream client.
+func TestCoreUpstreamAnthropicRotation(t *testing.T) {
+	rec := &keyRecorder{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.Header.Get("x-api-key"))
+		if r.Header.Get("x-api-key") == "k1" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, `{"type":"error","error":{"type":"rate_limit_error","message":"rate limited"}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"msg_rot","type":"message","role":"assistant","content":[{"type":"text","text":"anthropic rotated"}],"model":"mock","stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+	}))
+	defer upstream.Close()
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"p": {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolAnthropic,
+				Models:   map[string]provider.ModelMeta{"upstream-model": {}},
+			},
+		},
+		map[string]provider.ModelRoute{
+			"alias": {Provider: "p", Name: "upstream-model"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	srv := New(Config{
+		ProviderMgr:     pm,
+		AdapterRegistry: newRotationRegistry(t, config.ProtocolAnthropic),
+	})
+
+	body := bytes.NewBufferString(`{"model":"alias","max_tokens":64,"messages":[{"role":"user","content":"hello"}]}`)
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/messages", body))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte("anthropic rotated")) {
+		t.Fatalf("response body missing rotated content: %s", recorder.Body.String())
+	}
+	if keys := rec.snapshot(); !equalKeys(keys, []string{"k1", "k2"}) {
+		t.Fatalf("upstream keys = %v, want [k1 k2]", keys)
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 1", idx)
+	}
+}
+
+// TestCoreUpstreamChatRotation drives a non-streaming POST
+// /v1/chat/completions through the public handler with a multi-key
+// openai-chat provider: Bearer k1 returns 429, Bearer k2 returns a valid
+// chat completion.
+func TestCoreUpstreamChatRotation(t *testing.T) {
+	rec := &keyRecorder{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "Bearer k1" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, `{"error":{"message":"rate limited","type":"rate_limit_error"}}`)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"chatcmpl_rot","object":"chat.completion","created":1,"model":"mock","choices":[{"index":0,"message":{"role":"assistant","content":"chat rotated"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+	}))
+	defer upstream.Close()
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"p": {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIChat,
+				Models:   map[string]provider.ModelMeta{"upstream-model": {}},
+			},
+		},
+		map[string]provider.ModelRoute{
+			"alias": {Provider: "p", Name: "upstream-model"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	// The chat rotating caller builds per-index clients from the runtime
+	// snapshot's provider defs.
+	cfg := config.Config{
+		Mode: config.ModeTransform,
+		ProviderDefs: map[string]config.ProviderDef{
+			"p": {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIChat,
+				Models:   map[string]config.ModelMeta{"upstream-model": {}},
+			},
+		},
+	}
+	srv := New(Config{
+		ProviderMgr:     pm,
+		AdapterRegistry: newRotationRegistry(t, config.ProtocolOpenAIChat),
+		Runtime:         runtime.NewRuntime(cfg, pm, nil),
+	})
+
+	body := bytes.NewBufferString(`{"model":"alias","messages":[{"role":"user","content":"hello"}]}`)
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte("chat rotated")) {
+		t.Fatalf("response body missing rotated content: %s", recorder.Body.String())
+	}
+	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 1", idx)
+	}
+}
+
+// TestPassthroughRotation drives a non-streaming POST /v1/responses through
+// the passthrough handler with a multi-key openai-response provider: Bearer
+// k1 returns 429 with body "quota", Bearer k2 returns a valid response.
+func TestPassthroughRotation(t *testing.T) {
+	rec := &keyRecorder{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "Bearer k1" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, "quota")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"resp_rot","object":"response","status":"completed","output":[]}`)
+	}))
+	defer upstream.Close()
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"openai": {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIResponse,
+			},
+		},
+		map[string]provider.ModelRoute{
+			"rot": {Provider: "openai", Name: "gpt-upstream"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	srv := New(Config{ProviderMgr: pm})
+
+	body := bytes.NewBufferString(`{"model":"rot","input":"hello"}`)
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", body))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
+	}
+}
+
+// TestPassthroughRotationFullFailureReplaysActiveKeyBody is the full-failure
+// variant: both keys return 429 (k1 body "first", k2 body "second") and the
+// response must be the ACTIVE key's 429 replayed verbatim.
+func TestPassthroughRotationFullFailureReplaysActiveKeyBody(t *testing.T) {
+	rec := &keyRecorder{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		key := r.Header.Get("Authorization")
+		rec.record(key)
+		w.WriteHeader(http.StatusTooManyRequests)
+		if key == "Bearer k1" {
+			fmt.Fprint(w, "first")
+			return
+		}
+		fmt.Fprint(w, "second")
+	}))
+	defer upstream.Close()
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"openai": {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIResponse,
+			},
+		},
+		map[string]provider.ModelRoute{
+			"rot": {Provider: "openai", Name: "gpt-upstream"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	srv := New(Config{ProviderMgr: pm})
+
+	body := bytes.NewBufferString(`{"model":"rot","input":"hello"}`)
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", body))
+
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Body.String(); got != "first" {
+		t.Fatalf("response body = %q, want the active-key body %q verbatim", got, "first")
+	}
+	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
 	}
 }
