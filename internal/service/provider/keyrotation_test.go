@@ -596,3 +596,74 @@ func TestRotatingProviderClientNormalizeError(t *testing.T) {
 		t.Fatalf("ActiveKeyIndex(p) = %d, want 0 (no rotation on normalize error)", idx)
 	}
 }
+
+// fakeAsAnthropicProviderClient is a ProviderClient that does not wrap an
+// anthropic client; used to assert the AsAnthropicUpstream error path.
+type fakeAsAnthropicProviderClient struct{}
+
+func (fakeAsAnthropicProviderClient) CreateMessage(ctx context.Context, req any) (any, error) {
+	return nil, nil
+}
+
+func (fakeAsAnthropicProviderClient) StreamMessage(ctx context.Context, req any) (<-chan any, error) {
+	return nil, nil
+}
+
+// TestAsAnthropicUpstream checks the typed anthropic upstream accessor:
+// plain adapters return the wrapped *anthropic.Client, rotating clients
+// return their typed rotating client, and unknown types error.
+func TestAsAnthropicUpstream(t *testing.T) {
+	// Single-key provider: plain adapter returns the same *anthropic.Client.
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"solo": {BaseURL: "https://s.example", APIKey: "solo"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	plainClient, err := pm.ClientForKey("solo")
+	if err != nil {
+		t.Fatalf("ClientForKey(solo) error = %v", err)
+	}
+	adapter, ok := plainClient.(*anthropicClientAdapter)
+	if !ok {
+		t.Fatalf("ClientForKey(solo) = %T, want *anthropicClientAdapter", plainClient)
+	}
+	typed, err := AsAnthropicUpstream(adapter)
+	if err != nil {
+		t.Fatalf("AsAnthropicUpstream(adapter) error = %v", err)
+	}
+	if typed != adapter.client {
+		t.Fatal("AsAnthropicUpstream(adapter) did not return the wrapped *anthropic.Client (pointer mismatch)")
+	}
+
+	// Multi-key provider: rotating client returns its typed rotating client.
+	pmm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	rotClient, err := pmm.ClientForKey("p")
+	if err != nil {
+		t.Fatalf("ClientForKey(p) error = %v", err)
+	}
+	rp, ok := rotClient.(*rotatingProviderClient)
+	if !ok {
+		t.Fatalf("ClientForKey(p) = %T, want *rotatingProviderClient", rotClient)
+	}
+	typed, err = AsAnthropicUpstream(rp)
+	if err != nil {
+		t.Fatalf("AsAnthropicUpstream(rotating) error = %v", err)
+	}
+	if typed == nil {
+		t.Fatal("AsAnthropicUpstream(rotating) = nil, want typed rotating client")
+	}
+	if typed != rp.typed {
+		t.Fatal("AsAnthropicUpstream(rotating) did not return the typed rotating client")
+	}
+
+	// Unknown ProviderClient type errors.
+	if _, err := AsAnthropicUpstream(fakeAsAnthropicProviderClient{}); err == nil {
+		t.Fatal("AsAnthropicUpstream(unknown type) = nil error, want error")
+	}
+}
