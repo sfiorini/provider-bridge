@@ -212,9 +212,16 @@ func (s *Server) activeGoogleClient(providerKey string) any {
 
 	if snap := s.runtimeSnapshot(); snap != nil {
 		if def, ok := snap.Config.ProviderDefs[providerKey]; ok && def.Protocol == config.ProtocolGoogleGenAI {
+			apiKey := def.APIKey
+			if pm := s.activeProviderManager(); pm != nil {
+				// Google-genai clients are built from the ACTIVE API key. Google
+				// rotation is explicitly out of scope (design D4): these clients
+				// are cached per provider and never rotate on 429/402.
+				apiKey = pm.ProviderAPIKey(providerKey)
+			}
 			client := google.NewClient(google.ClientConfig{
 				BaseURL:   def.BaseURL,
-				APIKey:    def.APIKey,
+				APIKey:    apiKey,
 				Project:   def.Project,
 				Location:  def.Location,
 				Version:   def.APIVersion,

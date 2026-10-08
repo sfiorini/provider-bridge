@@ -314,9 +314,14 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 			})
 			slog.Debug("chat client created", "provider", key)
 		case config.ProtocolGoogleGenAI:
+			// Google-genai clients are built from the ACTIVE API key. Google
+			// rotation is explicitly out of scope (design D4): these clients
+			// are cached per provider and never rotate on 429/402. At boot the
+			// active index is 0, so this equals the first configured key and
+			// never leaks the raw comma-separated list.
 			googleClients[key] = google.NewClient(google.ClientConfig{
 				BaseURL:   def.BaseURL,
-				APIKey:    def.APIKey,
+				APIKey:    providerMgr.ProviderAPIKey(key),
 				Client:    proxyHTTPClient,
 				Project:   def.Project,
 				Location:  def.Location,
