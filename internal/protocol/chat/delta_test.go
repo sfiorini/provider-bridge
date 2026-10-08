@@ -6,6 +6,8 @@ import (
 	"io"
 	"strings"
 	"testing"
+
+	"providerbridge/internal/format"
 )
 
 // TestDeltaUnmarshalJSON covers tolerant decoding of delta.content in both
@@ -93,6 +95,29 @@ func TestDeltaUnmarshalJSON(t *testing.T) {
 			t.Fatalf("expected error, got none")
 		}
 	})
+}
+
+// TestFromChatContentThinkingBlock proves fromChatContent maps a
+// "thinking" block to a reasoning CoreContentBlock (non-stream parity for
+// issue #11) while other block types keep their existing behavior.
+func TestFromChatContentThinkingBlock(t *testing.T) {
+	adapter := NewChatProviderAdapter(0, nil, format.CorePluginHooks{})
+	blocks := adapter.fromChatContent([]any{
+		map[string]any{
+			"type":     "thinking",
+			"thinking": []any{map[string]any{"text": "why"}},
+		},
+		map[string]any{"type": "text", "text": "hi"},
+	})
+	if len(blocks) != 2 {
+		t.Fatalf("got %d blocks, want 2: %+v", len(blocks), blocks)
+	}
+	if blocks[0].Type != "reasoning" || blocks[0].ReasoningText != "why" {
+		t.Fatalf("blocks[0] = %+v, want reasoning block with ReasoningText %q", blocks[0], "why")
+	}
+	if blocks[1].Type != "text" || blocks[1].Text != "hi" {
+		t.Fatalf("blocks[1] = %+v, want text block with Text %q", blocks[1], "hi")
+	}
 }
 
 // TestReadStreamToleratesArrayDelta proves the SSE reader keeps the
