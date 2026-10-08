@@ -172,23 +172,25 @@ func TestReloadKeepsRotation(t *testing.T) {
 		t.Fatal("advanceKeyIndex(p,0,2) = false, want true")
 	}
 
-	// Reload with a SHORTER key list: index 2 clamps to len-1 = 1.
+	// Reload with a SHORTER key list: out-of-range index 2 clamps to 0 —
+	// the same rule SetKeyRotationStore applies to a persisted index on
+	// restart, so reload and restart behave identically.
+	if err := pm.Reload(newCfg("k1,k2")); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 0 {
+		t.Fatalf("ActiveKeyIndex(p) after shrink reload = %d, want 0 (clamped, restart-consistent)", idx)
+	}
+
+	// Advance within the 2-key list, reload unchanged: index survives.
+	if !pm.advanceKeyIndex("p", 0, 1) {
+		t.Fatal("advanceKeyIndex(p,0,1) = false, want true")
+	}
 	if err := pm.Reload(newCfg("k1,k2")); err != nil {
 		t.Fatalf("Reload() error = %v", err)
 	}
 	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
-		t.Fatalf("ActiveKeyIndex(p) after shrink reload = %d, want 1 (clamped)", idx)
-	}
-
-	// Advance back to 2 within the 3-key list, reload unchanged: index survives.
-	if !pm.advanceKeyIndex("p", 1, 2) {
-		t.Fatal("advanceKeyIndex(p,1,2) = false, want true")
-	}
-	if err := pm.Reload(newCfg("k1,k2,k3")); err != nil {
-		t.Fatalf("Reload() error = %v", err)
-	}
-	if idx := pm.ActiveKeyIndex("p"); idx != 2 {
-		t.Fatalf("ActiveKeyIndex(p) after unchanged reload = %d, want 2", idx)
+		t.Fatalf("ActiveKeyIndex(p) after unchanged reload = %d, want 1", idx)
 	}
 }
 

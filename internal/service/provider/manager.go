@@ -289,17 +289,16 @@ func (pm *ProviderManager) Reload(cfg config.ProviderConfig) error {
 	defer pm.mu.Unlock()
 	// Preserve key rotation state across reloads: the store pointer moves to
 	// the new manager; the active index survives when the new key list still
-	// has that index, otherwise it clamps to the last key.
+	// has that index. Out-of-range indexes clamp to 0 — the same rule
+	// SetKeyRotationStore applies to a persisted index at restart, keeping
+	// reload and restart behavior identical.
 	newPM.keyRotationStore = pm.keyRotationStore
 	for key, idx := range pm.activeIdx {
 		n := len(newPM.apiKeys[key])
 		if n == 0 {
 			continue
 		}
-		if idx >= n {
-			idx = n - 1
-		}
-		if idx < 0 {
+		if idx < 0 || idx >= n {
 			idx = 0
 		}
 		newPM.activeIdx[key] = idx
