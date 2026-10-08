@@ -98,6 +98,19 @@ type Server struct {
 // unchanged.
 func (s *Server) invalidateClientCacheOnManagerChange() {
 	pm := s.activeProviderManager()
+	// Fast path: the manager is unchanged on the vast majority of calls
+	// (this runs on every cache read, i.e. every chat request), so a
+	// read lock suffices and the concurrent read path stays lock-free
+	// with respect to other readers.
+	s.clientCacheMu.RLock()
+	if s.clientCacheMgr == pm {
+		s.clientCacheMu.RUnlock()
+		return
+	}
+	s.clientCacheMu.RUnlock()
+	// Slow path: the manager changed — take the write lock and
+	// DOUBLE-CHECK the mismatch before clearing: another goroutine may
+	// have invalidated (and recorded this manager) in the meantime.
 	s.clientCacheMu.Lock()
 	defer s.clientCacheMu.Unlock()
 	if s.clientCacheMgr == pm {
