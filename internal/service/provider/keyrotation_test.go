@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -430,4 +431,168 @@ func slicesEqual(a, b []int) bool {
 		}
 	}
 	return true
+}
+
+// TestRotatingAnthropicClient429 checks that a multi-key provider's
+// ProviderClient rotates to the next API key on an HTTP 429.
+func TestRotatingAnthropicClient429(t *testing.T) {
+	var mu sync.Mutex
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		keys = append(keys, r.Header.Get("x-api-key"))
+		got := keys[len(keys)-1]
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if got == "k1" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, `{"error":{"type":"rate_limit_error","message":"rate limited k1"}}`)
+			return
+		}
+		fmt.Fprint(w, `{"id":"msg_1","type":"message","role":"assistant","model":"m","content":[],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+	}))
+	defer srv.Close()
+
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: srv.URL, APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	client, err := pm.ClientForKey("p")
+	if err != nil {
+		t.Fatalf("ClientForKey(p) error = %v", err)
+	}
+	resp, err := client.CreateMessage(context.Background(), &anthropic.MessageRequest{
+		Model: "m", MaxTokens: 1, Messages: []anthropic.Message{{Role: "user", Content: []anthropic.ContentBlock{{Type: "text", Text: "hi"}}}},
+	})
+	if err != nil {
+		t.Fatalf("CreateMessage() error = %v, want nil after rotation", err)
+	}
+	msg, ok := resp.(anthropic.MessageResponse)
+	if !ok {
+		t.Fatalf("CreateMessage() response type = %T, want anthropic.MessageResponse", resp)
+	}
+	if msg.ID != "msg_1" {
+		t.Fatalf("CreateMessage() response ID = %q, want %q", msg.ID, "msg_1")
+	}
+	mu.Lock()
+	n := len(keys)
+	mu.Unlock()
+	if n != 2 {
+		t.Fatalf("server saw %d requests, want 2", n)
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 1", idx)
+	}
+}
+
+// TestRotatingAnthropicAllKeysFail checks that when every key returns 429,
+// the FIRST (active key's) attempt error is returned.
+func TestRotatingAnthropicAllKeysFail(t *testing.T) {
+	var mu sync.Mutex
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		keys = append(keys, r.Header.Get("x-api-key"))
+		got := keys[len(keys)-1]
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprintf(w, `{"error":{"type":"rate_limit_error","message":"rate limited %s"}}`, got)
+	}))
+	defer srv.Close()
+
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: srv.URL, APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	client, err := pm.ClientForKey("p")
+	if err != nil {
+		t.Fatalf("ClientForKey(p) error = %v", err)
+	}
+	_, err = client.CreateMessage(context.Background(), &anthropic.MessageRequest{
+		Model: "m", MaxTokens: 1, Messages: []anthropic.Message{{Role: "user", Content: []anthropic.ContentBlock{{Type: "text", Text: "hi"}}}},
+	})
+	if err == nil {
+		t.Fatal("CreateMessage() = nil, want error")
+	}
+	if err.Error() != "rate limited k1" {
+		t.Fatalf("CreateMessage() error = %q, want the FIRST attempt's error %q", err.Error(), "rate limited k1")
+	}
+	mu.Lock()
+	n := len(keys)
+	mu.Unlock()
+	if n != 2 {
+		t.Fatalf("server saw %d requests, want 2", n)
+	}
+}
+
+// TestRotatingProviderClientAccessor checks that AnthropicClient exposes
+// the ACTIVE plain client (used by ProbeWebSearch; never rotates).
+func TestRotatingProviderClientAccessor(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	client, err := pm.ClientForKey("p")
+	if err != nil {
+		t.Fatalf("ClientForKey(p) error = %v", err)
+	}
+	accessor, ok := client.(AnthropicClientAccessor)
+	if !ok {
+		t.Fatalf("ClientForKey(p) = %T, want AnthropicClientAccessor", client)
+	}
+	if accessor.AnthropicClient() != pm.AnthropicClientIndex("p", 0) {
+		t.Fatal("AnthropicClient() is not the active (index 0) client")
+	}
+	if !pm.advanceKeyIndex("p", 0, 1) {
+		t.Fatal("advanceKeyIndex(p,0,1) = false, want true")
+	}
+	if accessor.AnthropicClient() != pm.AnthropicClientIndex("p", 1) {
+		t.Fatal("AnthropicClient() did not follow the advanced active index")
+	}
+}
+
+// TestSingleKeyProviderPlainAdapter checks that single-key providers keep
+// the plain anthropicClientAdapter (no rotating types).
+func TestSingleKeyProviderPlainAdapter(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"solo": {BaseURL: "https://s.example", APIKey: "solo"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	client, err := pm.ClientForKey("solo")
+	if err != nil {
+		t.Fatalf("ClientForKey(solo) error = %v", err)
+	}
+	if _, isRotating := client.(*rotatingProviderClient); isRotating {
+		t.Fatalf("ClientForKey(solo) = %T, want plain adapter for single key", client)
+	}
+}
+
+// TestRotatingProviderClientNormalizeError checks that a wrong-typed request
+// fails before any rotation.
+func TestRotatingProviderClientNormalizeError(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	client, err := pm.ClientForKey("p")
+	if err != nil {
+		t.Fatalf("ClientForKey(p) error = %v", err)
+	}
+	if _, err := client.CreateMessage(context.Background(), "not a request"); err == nil {
+		t.Fatal("CreateMessage(wrong type) = nil, want normalize error")
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 0 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 0 (no rotation on normalize error)", idx)
+	}
 }

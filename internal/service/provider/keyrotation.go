@@ -141,3 +141,84 @@ func isRotatableError(err error) bool {
 	}
 	return false
 }
+
+// rotatingAnthropicClient is the typed rotating anthropic client. Rotation
+// happens inside CreateMessage/StreamMessage so typed *anthropic.ProviderError
+// values reach runWithRotation before any caller-side error wrapping.
+type rotatingAnthropicClient struct {
+	pm          *ProviderManager
+	providerKey string
+}
+
+func (c *rotatingAnthropicClient) CreateMessage(ctx context.Context, req anthropic.MessageRequest) (anthropic.MessageResponse, error) {
+	var resp anthropic.MessageResponse
+	err := c.pm.runWithRotation(ctx, c.providerKey, func(idx int) error {
+		var err error
+		resp, err = c.pm.AnthropicClientIndex(c.providerKey, idx).CreateMessage(ctx, req)
+		return err
+	})
+	if err != nil {
+		return anthropic.MessageResponse{}, err
+	}
+	return resp, nil
+}
+
+func (c *rotatingAnthropicClient) StreamMessage(ctx context.Context, req anthropic.MessageRequest) (anthropic.Stream, error) {
+	var stream anthropic.Stream
+	err := c.pm.runWithRotation(ctx, c.providerKey, func(idx int) error {
+		var err error
+		stream, err = c.pm.AnthropicClientIndex(c.providerKey, idx).StreamMessage(ctx, req)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return stream, nil
+}
+
+// rotatingProviderClient adapts rotatingAnthropicClient to the any-typed
+// ProviderClient interface (mirroring anthropicClientAdapter's normalize
+// pattern) and exposes the ACTIVE plain client via AnthropicClientAccessor
+// (used only by ProbeWebSearch).
+type rotatingProviderClient struct {
+	typed *rotatingAnthropicClient
+}
+
+func (p *rotatingProviderClient) CreateMessage(ctx context.Context, req any) (any, error) {
+	msgReq, err := normalizeAnthropicMessageRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	return p.typed.CreateMessage(ctx, msgReq)
+}
+
+func (p *rotatingProviderClient) StreamMessage(ctx context.Context, req any) (<-chan any, error) {
+	msgReq, err := normalizeAnthropicMessageRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := p.typed.StreamMessage(ctx, msgReq)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan any)
+	go func() {
+		defer close(out)
+		for {
+			evt, err := stream.Next()
+			if err != nil {
+				return
+			}
+			out <- evt
+		}
+	}()
+	return out, nil
+}
+
+func (p *rotatingProviderClient) AnthropicClient() *anthropic.Client {
+	return p.typed.pm.AnthropicClientIndex(p.typed.providerKey,
+		p.typed.pm.ActiveKeyIndex(p.typed.providerKey))
+}
+
+var _ ProviderClient = (*rotatingProviderClient)(nil)
+var _ AnthropicClientAccessor = (*rotatingProviderClient)(nil)

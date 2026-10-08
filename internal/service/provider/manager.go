@@ -181,13 +181,17 @@ func NewProviderManager(providerCfgs map[string]ProviderConfig, routes map[strin
 		}
 		pm.apiKeys[key] = keys
 		pm.httpClients[key] = httpClient
-		pm.clients[key] = &anthropicClientAdapter{client: anthropic.NewClient(anthropic.ClientConfig{
-			BaseURL:   cfg.BaseURL,
-			APIKey:    cfg.APIKey,
-			Version:   cfg.Version,
-			UserAgent: cfg.UserAgent,
-			Client:    httpClient,
-		})}
+		if len(keys) > 1 {
+			pm.clients[key] = &rotatingProviderClient{typed: &rotatingAnthropicClient{pm: pm, providerKey: key}}
+		} else {
+			pm.clients[key] = &anthropicClientAdapter{client: anthropic.NewClient(anthropic.ClientConfig{
+				BaseURL:   cfg.BaseURL,
+				APIKey:    cfg.APIKey,
+				Version:   cfg.Version,
+				UserAgent: cfg.UserAgent,
+				Client:    httpClient,
+			})}
+		}
 	}
 
 	// Pick the default key.
