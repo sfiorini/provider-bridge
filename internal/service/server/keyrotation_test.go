@@ -5,7 +5,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1385,4 +1387,145 @@ func newGoogleKeyUpstream() (*httptest.Server, *keyRecorder) {
 		fmt.Fprint(w, `{"candidates":[]}`)
 	}))
 	return srv, rec
+}
+
+// ============================================================================
+// reasoning_content echo gate (issue: Mistral 422 extra_forbidden)
+// ============================================================================
+
+// reasoningEchoConversation is the LibreChat replay shape: a multi-turn
+// conversation whose assistant message carries reasoning_content and
+// tool_calls, followed by the tool result.
+func reasoningEchoConversation() string {
+	return `{"model":"alias","stream":true,"messages":[` +
+		`{"role":"user","content":"hi"},` +
+		`{"role":"assistant","content":null,"reasoning_content":"secret thoughts",` +
+		`"tool_calls":[{"id":"tu1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Rome\"}"}}]},` +
+		`{"role":"tool","tool_call_id":"tu1","content":"20C"}` +
+		`]}`
+}
+
+// reasoningEchoUpstreamHandler returns an upstream handler that mirrors the
+// production bug conditions: mistralShape 422s when any assistant message
+// carries reasoning_content; otherwise it streams a normal SSE response.
+func reasoningEchoUpstreamHandler(t *testing.T, mistralShape bool, sawEcho *bool) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read upstream body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		var body struct {
+			Messages []struct {
+				Role             string `json:"role"`
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Errorf("unmarshal upstream body: %v (body=%s)", err, raw)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		echoed := false
+		for _, m := range body.Messages {
+			if m.Role == "assistant" && m.ReasoningContent != "" {
+				echoed = true
+			}
+		}
+		if sawEcho != nil {
+			*sawEcho = echoed
+		}
+		if mistralShape && echoed {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			fmt.Fprint(w, `{"message":"Extra inputs are not permitted: 'reasoning_content' at messages[1].assistant.reasoning_content","type":"invalid_request_error","code":"extra_forbidden"}`)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `data: {"id":"chatcmpl_echo","object":"chat.completion.chunk","created":1,"model":"mock","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"},"finish_reason":null}]}`+"\n\n")
+		fmt.Fprint(w, `data: {"id":"chatcmpl_echo","object":"chat.completion.chunk","created":1,"model":"mock","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\n")
+		fmt.Fprint(w, "data: "+"["+"DONE"+"]"+"\n\n")
+	}
+}
+
+// newReasoningEchoServer builds a Server with a single openai-chat provider
+// keyed providerKey, mirroring TestCoreUpstreamChatRotation's construction.
+func newReasoningEchoServer(t *testing.T, providerKey string, upstream *httptest.Server) *Server {
+	t.Helper()
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			providerKey: {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1",
+				Protocol: config.ProtocolOpenAIChat,
+				Models:   map[string]provider.ModelMeta{"upstream-model": {}},
+			},
+		},
+		map[string]provider.ModelRoute{
+			"alias": {Provider: providerKey, Name: "upstream-model"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	cfg := config.Config{
+		Mode: config.ModeTransform,
+		ProviderDefs: map[string]config.ProviderDef{
+			providerKey: {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1",
+				Protocol: config.ProtocolOpenAIChat,
+				Models:   map[string]config.ModelMeta{"upstream-model": {}},
+			},
+		},
+	}
+	return New(Config{
+		ProviderMgr:     pm,
+		AdapterRegistry: newRotationRegistry(t, config.ProtocolOpenAIChat),
+		Runtime:         runtime.NewRuntime(cfg, pm, nil),
+	})
+}
+
+// TestChatReasoningEchoGate_Mistral drives a streaming POST
+// /v1/chat/completions with a LibreChat-style replayed reasoning_content.
+// Mistral rejects reasoning_content on input messages with 422, so the
+// bridge must strip it before forwarding.
+func TestChatReasoningEchoGate_Mistral(t *testing.T) {
+	upstream := httptest.NewServer(reasoningEchoUpstreamHandler(t, true, nil))
+	defer upstream.Close()
+	srv := newReasoningEchoServer(t, "mistral", upstream)
+
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewBufferString(reasoningEchoConversation())))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte("ok")) {
+		t.Fatalf("response body missing content: %s", recorder.Body.String())
+	}
+}
+
+// TestChatReasoningEchoGate_DeepSeek: DeepSeek requires the reasoning echo,
+// so the same conversation must keep reasoning_content on the wire.
+func TestChatReasoningEchoGate_DeepSeek(t *testing.T) {
+	var sawEcho bool
+	upstream := httptest.NewServer(reasoningEchoUpstreamHandler(t, false, &sawEcho))
+	defer upstream.Close()
+	srv := newReasoningEchoServer(t, "deepseek", upstream)
+
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		bytes.NewBufferString(reasoningEchoConversation())))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !sawEcho {
+		t.Error("upstream did not receive reasoning_content on the assistant message; DeepSeek requires the echo")
+	}
 }

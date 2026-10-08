@@ -87,6 +87,13 @@ func (s *Server) executeCoreUpstream(
 	outcome.WSInjected = s.injectCoreWebSearchAlias(ctx, coreReq, preferred, modelAlias, outcome.WSMode)
 	searchCfg := s.resolvedSearchConfig(preferred.ProviderKey, modelAlias)
 
+	// Tell the adapter which provider it is converting for: the chat adapter
+	// gates the reasoning_content echo on this (DeepSeek requires it, others 422).
+	if coreReq.Extensions == nil {
+		coreReq.Extensions = make(map[string]any)
+	}
+	coreReq.Extensions["provider_key"] = preferred.ProviderKey
+
 	upstreamAny, err := providerAdapter.FromCoreRequest(ctx, coreReq)
 	if err != nil {
 		return nil, fmt.Errorf("upstream conversion failed: %w", err)
