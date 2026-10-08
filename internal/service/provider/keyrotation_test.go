@@ -1,8 +1,12 @@
 package provider
 
 import (
+	"context"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestAnthropicClientIndexPool(t *testing.T) {
@@ -36,6 +40,109 @@ func TestAnthropicClientIndexPool(t *testing.T) {
 	// Unknown provider yields nil.
 	if c := pm.AnthropicClientIndex("missing", 0); c != nil {
 		t.Fatal("AnthropicClientIndex(missing,0) = non-nil, want nil")
+	}
+}
+
+// fakeRotationStore is an in-memory KeyRotationStore recording calls.
+type fakeRotationStore struct {
+	mu     sync.Mutex
+	loaded map[string]int
+	calls  []string // "key:idx" per SetProviderKeyIndex call
+	setErr error
+}
+
+func (f *fakeRotationStore) LoadProviderKeyIndexes(ctx context.Context) (map[string]int, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.loaded, nil
+}
+
+func (f *fakeRotationStore) SetProviderKeyIndex(ctx context.Context, providerKey string, idx int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, fmt.Sprintf("%s:%d", providerKey, idx))
+	return f.setErr
+}
+
+func (f *fakeRotationStore) recorded() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.calls...)
+}
+
+func TestSetKeyRotationStoreClamp(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+
+	// Persisted index beyond the key count clamps to 0.
+	pm.SetKeyRotationStore(&fakeRotationStore{loaded: map[string]int{"p": 5}})
+	if idx := pm.ActiveKeyIndex("p"); idx != 0 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 0 (clamped)", idx)
+	}
+
+	// Persisted index within range is honored.
+	pm2, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	pm2.SetKeyRotationStore(&fakeRotationStore{loaded: map[string]int{"p": 1}})
+	if idx := pm2.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 1", idx)
+	}
+
+	// Nil store leaves in-memory rotation untouched.
+	pm.SetKeyRotationStore(nil)
+	if idx := pm.ActiveKeyIndex("p"); idx != 0 {
+		t.Fatalf("ActiveKeyIndex(p) after nil store = %d, want 0", idx)
+	}
+}
+
+func TestAdvanceKeyIndexCAS(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2,k3"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	store := &fakeRotationStore{}
+	pm.SetKeyRotationStore(store)
+
+	// Successful CAS advance 0 -> 1.
+	if !pm.advanceKeyIndex("p", 0, 1) {
+		t.Fatal("advanceKeyIndex(p,0,1) = false, want true")
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 1 after advance", idx)
+	}
+	// Async persist: poll up to 1s for the store to receive (p,1).
+	got := false
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		for _, c := range store.recorded() {
+			if c == "p:1" {
+				got = true
+			}
+		}
+		if got {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !got {
+		t.Fatalf("store never received (p,1); calls = %v", store.recorded())
+	}
+
+	// Second advance from stale index 0 must fail (current is 1).
+	if pm.advanceKeyIndex("p", 0, 2) {
+		t.Fatal("advanceKeyIndex(p,0,2) = true, want false (stale CAS)")
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 1 (unchanged by failed CAS)", idx)
 	}
 }
 
