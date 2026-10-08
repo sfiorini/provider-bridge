@@ -85,6 +85,29 @@ type Server struct {
 	googleCache   map[string]*google.Client
 	clientCacheMu sync.RWMutex
 	googleCacheMu sync.RWMutex
+	// clientCacheMgr is the manager the caches above were built from
+	// (guarded by clientCacheMu). invalidateClientCacheOnManagerChange
+	// clears the caches whenever the active manager differs.
+	clientCacheMgr *provider.ProviderManager
+}
+
+// invalidateClientCacheOnManagerChange clears the lazily-built client caches
+// whenever the active provider manager changed (e.g. a runtime Reload built
+// a new manager), so a cached client never outlives the manager its API key
+// came from. Safe to call on every cache read; a no-op when the manager is
+// unchanged.
+func (s *Server) invalidateClientCacheOnManagerChange() {
+	pm := s.activeProviderManager()
+	s.clientCacheMu.Lock()
+	defer s.clientCacheMu.Unlock()
+	if s.clientCacheMgr == pm {
+		return
+	}
+	s.clientCache = make(map[string]*chat.Client)
+	s.clientCacheMgr = pm
+	s.googleCacheMu.Lock()
+	s.googleCache = make(map[string]*google.Client)
+	s.googleCacheMu.Unlock()
 }
 
 func (s *Server) runtimeSnapshot() *runtime.ConfigSnapshot {
@@ -109,6 +132,7 @@ func (s *Server) activeProviderDefs() map[string]config.ProviderDef {
 }
 
 func (s *Server) activeChatClient(providerKey string) any {
+	s.invalidateClientCacheOnManagerChange()
 	// Check runtime-driven cache first.
 	s.clientCacheMu.RLock()
 	if cached, ok := s.clientCache[providerKey]; ok {
@@ -153,6 +177,7 @@ func (s *Server) chatAPIKey(providerKey string) string {
 // rotation index idx, building and caching it on first use. Cache entries
 // are keyed "<provider>\x00<idx>" in s.clientCache.
 func (s *Server) chatClientIndex(providerKey string, idx int) *chat.Client {
+	s.invalidateClientCacheOnManagerChange()
 	cacheKey := providerKey + "\x00" + strconv.Itoa(idx)
 	s.clientCacheMu.RLock()
 	if cached, ok := s.clientCache[cacheKey]; ok {
@@ -202,6 +227,7 @@ func (s *Server) activeChatCaller(providerKey string) provider.ChatCaller {
 }
 
 func (s *Server) activeGoogleClient(providerKey string) any {
+	s.invalidateClientCacheOnManagerChange()
 	// Check runtime-driven cache first.
 	s.googleCacheMu.RLock()
 	if cached, ok := s.googleCache[providerKey]; ok {

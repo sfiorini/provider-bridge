@@ -220,6 +220,107 @@ func TestActiveChatCallerSingleKeyPlain(t *testing.T) {
 	}
 }
 
+// TestChatClientCacheInvalidatedOnManagerReload checks that the lazily-built
+// chat client caches are cleared when the active provider manager changes
+// (runtime Reload): a cached client built with the OLD key must never serve
+// requests after the runtime reloaded with a NEW key.
+func TestChatClientCacheInvalidatedOnManagerReload(t *testing.T) {
+	var mu sync.Mutex
+	var auth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auth = r.Header.Get("Authorization")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer upstream.Close()
+
+	newCfg := func(apiKey string) config.Config {
+		return config.Config{
+			Mode: config.ModeTransform,
+			ProviderDefs: map[string]config.ProviderDef{
+				"main": {
+					BaseURL:  upstream.URL,
+					APIKey:   apiKey,
+					Protocol: config.ProtocolOpenAIChat,
+					Models:   map[string]config.ModelMeta{"m": {}},
+				},
+			},
+		}
+	}
+
+	cfg := newCfg("k1")
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"main": {
+				BaseURL:    upstream.URL,
+				APIKey:     "k1",
+				Protocol:   config.ProtocolOpenAIChat,
+				ModelNames: []string{"m"},
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	rt := runtime.NewRuntime(cfg, pm, nil)
+	srv := New(Config{ProviderMgr: pm, Runtime: rt})
+
+	// Prime both caches: the plain-key cache and the per-index cache.
+	first := srv.activeChatClient("main")
+	if first == nil {
+		t.Fatal("activeChatClient(main) = nil before reload")
+	}
+	firstIdx := srv.chatClientIndex("main", 0)
+	if firstIdx == nil {
+		t.Fatal("chatClientIndex(main, 0) = nil before reload")
+	}
+
+	// Simulate a runtime reload with a different API key: the runtime swaps
+	// in a NEW provider manager.
+	if err := rt.Reload(newCfg("k2")); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+
+	// The plain-key cache must have been invalidated: the new client's
+	// requests carry the NEW key.
+	second := srv.activeChatClient("main")
+	client, ok := second.(*chat.Client)
+	if !ok {
+		t.Fatalf("activeChatClient(main) after reload = %T, want *chat.Client", second)
+	}
+	req := &chat.ChatRequest{Model: "m", Messages: []chat.ChatMessage{{Role: "user", Content: "hi"}}}
+	if _, err := client.CreateChat(context.Background(), req); err != nil {
+		t.Fatalf("CreateChat() error = %v", err)
+	}
+	mu.Lock()
+	got := auth
+	mu.Unlock()
+	if got != "Bearer k2" {
+		t.Fatalf("upstream Authorization = %q, want %q (post-reload key)", got, "Bearer k2")
+	}
+
+	// The per-index cache must have been invalidated too.
+	secondIdx := srv.chatClientIndex("main", 0)
+	if secondIdx == nil {
+		t.Fatal("chatClientIndex(main, 0) = nil after reload")
+	}
+	if secondIdx == firstIdx {
+		t.Fatal("chatClientIndex(main, 0) after reload returned the pre-reload cached client")
+	}
+	if _, err := secondIdx.CreateChat(context.Background(), req); err != nil {
+		t.Fatalf("CreateChat() (per-index) error = %v", err)
+	}
+	mu.Lock()
+	got = auth
+	mu.Unlock()
+	if got != "Bearer k2" {
+		t.Fatalf("upstream Authorization (per-index) = %q, want %q (post-reload key)", got, "Bearer k2")
+	}
+}
+
 // keyRecorder records upstream API keys in arrival order (thread-safe).
 type keyRecorder struct {
 	mu   sync.Mutex
