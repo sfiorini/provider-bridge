@@ -1164,3 +1164,180 @@ func TestActiveChatClientRacingReloadNeverReturnsNil(t *testing.T) {
 		}
 	}
 }
+
+// TestServedClientsPairKeyWithEndpointOfSameGeneration reproduces the R6
+// defect: the client build sites read the provider def and the API key
+// from DIFFERENT runtime snapshot reads, so a reload landing between the
+// reads builds a MISMATCHED client (old BaseURL + new key, or new BaseURL
+// + old key) — a credential-disclosure window where the NEW key is sent
+// to a retired endpoint (or vice versa). The observable invariant: every
+// SERVED request must carry a (endpoint, key) pair from ONE provider-def
+// generation. Each generation gets its own upstream server, so a
+// mismatched pair is directly observable at the receiving upstream.
+// Run with -race.
+func TestServedClientsPairKeyWithEndpointOfSameGeneration(t *testing.T) {
+	// chatUpN is the OpenAI-chat upstream of generation N; googUpN is
+	// the google-genai upstream of generation N. Each records every
+	// credential it receives.
+	chatUp1, chatRec1 := newChatAuthUpstream()
+	defer chatUp1.Close()
+	chatUp2, chatRec2 := newChatAuthUpstream()
+	defer chatUp2.Close()
+	googUp1, googRec1 := newGoogleKeyUpstream()
+	defer googUp1.Close()
+	googUp2, googRec2 := newGoogleKeyUpstream()
+	defer googUp2.Close()
+
+	// genCfg builds the config of generation N: chat def points at
+	// chatUpN with key kN, google def at googUpN with key kN.
+	genCfg := func(n int, chatURL, googURL string) config.Config {
+		key := fmt.Sprintf("k%d", n)
+		return config.Config{
+			Mode: config.ModeTransform,
+			ProviderDefs: map[string]config.ProviderDef{
+				"chat": {
+					BaseURL:  chatURL,
+					APIKey:   key,
+					Protocol: config.ProtocolOpenAIChat,
+					Models:   map[string]config.ModelMeta{"m": {}},
+				},
+				"goog": {
+					BaseURL:    googURL,
+					APIKey:     key,
+					Protocol:   config.ProtocolGoogleGenAI,
+					APIVersion: "v1",
+					Models:     map[string]config.ModelMeta{"m": {}},
+				},
+			},
+		}
+	}
+	cfg1 := genCfg(1, chatUp1.URL, googUp1.URL)
+	cfg2 := genCfg(2, chatUp2.URL, googUp2.URL)
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"chat": {
+				BaseURL:    chatUp1.URL,
+				APIKey:     "k1",
+				Protocol:   config.ProtocolOpenAIChat,
+				ModelNames: []string{"m"},
+			},
+			"goog": {
+				BaseURL:    googUp1.URL,
+				APIKey:     "k1",
+				Protocol:   config.ProtocolGoogleGenAI,
+				ModelNames: []string{"m"},
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	rt := runtime.NewRuntime(cfg1, pm, nil)
+	srv := New(Config{ProviderMgr: pm, Runtime: rt})
+
+	const workers = 8
+	const iters = 200
+	var reloadWG, readersWG sync.WaitGroup
+	stop := make(chan struct{})
+	reloadWG.Add(1)
+	go func() {
+		defer reloadWG.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			cfg := cfg1
+			if i%2 == 1 {
+				cfg = cfg2
+			}
+			if err := rt.Reload(cfg); err != nil {
+				t.Errorf("Reload() error = %v", err)
+				return
+			}
+		}
+	}()
+	for w := 0; w < workers; w++ {
+		readersWG.Add(1)
+		go func() {
+			defer readersWG.Done()
+			for i := 0; i < iters; i++ {
+				req := &chat.ChatRequest{Model: "m", Messages: []chat.ChatMessage{{Role: "user", Content: "hi"}}}
+				if raw := srv.activeChatClient("chat"); raw != nil {
+					if c, ok := raw.(*chat.Client); ok {
+						if _, err := c.CreateChat(context.Background(), req); err != nil {
+							t.Errorf("chat CreateChat() error = %v", err)
+						}
+					}
+				}
+				if c := srv.chatClientIndex("chat", 0); c != nil {
+					if _, err := c.CreateChat(context.Background(), req); err != nil {
+						t.Errorf("chatIndex CreateChat() error = %v", err)
+					}
+				}
+				if raw := srv.activeGoogleClient("goog"); raw != nil {
+					if g, ok := raw.(*google.Client); ok {
+						if _, err := g.GenerateContent(context.Background(), "m", &google.GenerateContentRequest{}); err != nil {
+							t.Errorf("google GenerateContent() error = %v", err)
+						}
+					}
+				}
+			}
+		}()
+	}
+	readersWG.Wait()
+	close(stop)
+	reloadWG.Wait()
+
+	// THE INVARIANT: each generation's upstream only ever receives its
+	// own key. A cross-generation (endpoint, key) pair is the R6
+	// mismatch — new key disclosed to a retired endpoint, or old key
+	// sent to a new endpoint.
+	for _, tc := range []struct {
+		name string
+		rec  *keyRecorder
+		want string
+	}{
+		{"chat upstream gen1 (k1 endpoint)", chatRec1, "Bearer k1"},
+		{"chat upstream gen2 (k2 endpoint)", chatRec2, "Bearer k2"},
+		{"google upstream gen1 (k1 endpoint)", googRec1, "k1"},
+		{"google upstream gen2 (k2 endpoint)", googRec2, "k2"},
+	} {
+		keys := tc.rec.snapshot()
+		if len(keys) == 0 {
+			t.Fatalf("%s: no requests recorded, want the storm to have exercised it", tc.name)
+		}
+		for _, k := range keys {
+			if k != tc.want {
+				t.Fatalf("%s: received credential %q, want %q (a mismatched cross-generation key/endpoint pair was served)", tc.name, k, tc.want)
+			}
+		}
+	}
+}
+
+// newChatAuthUpstream starts an OpenAI-chat upstream recording every
+// request's Authorization header.
+func newChatAuthUpstream() (*httptest.Server, *keyRecorder) {
+	rec := &keyRecorder{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	return srv, rec
+}
+
+// newGoogleKeyUpstream starts a google-genai (Gemini API key in the query
+// string) upstream recording every request's key param.
+func newGoogleKeyUpstream() (*httptest.Server, *keyRecorder) {
+	rec := &keyRecorder{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.URL.Query().Get("key"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"candidates":[]}`)
+	}))
+	return srv, rec
+}
