@@ -17,6 +17,7 @@ import (
 	"providerbridge/internal/format"
 	"providerbridge/internal/protocol/anthropic"
 	"providerbridge/internal/protocol/chat"
+	"providerbridge/internal/protocol/google"
 	"providerbridge/internal/service/provider"
 	"providerbridge/internal/service/runtime"
 )
@@ -813,5 +814,118 @@ func TestPassthroughRotationStartsAtActiveIndex(t *testing.T) {
 	}
 	if idx := pm.ActiveKeyIndex("openai"); idx != 0 {
 		t.Fatalf("ActiveKeyIndex(openai) = %d, want 0 after 2xx at index 0", idx)
+	}
+}
+
+// TestChatClientCacheRefusesClientFromRetiredManager reproduces the R2
+// race: request A passes invalidateClientCacheOnManagerChange (records
+// pm1), builds a client with pm1's key, then a runtime reload swaps in
+// pm2 and request B invalidates (records pm2) and caches a pm2 client
+// BEFORE A re-acquires the write lock. A's store must be refused: the
+// caches belong to pm2 now, and A's client carries pm1's (retired) key.
+// After the race, the served client's Authorization header must be the
+// NEW key.
+func TestChatClientCacheRefusesClientFromRetiredManager(t *testing.T) {
+	var mu sync.Mutex
+	var auth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auth = r.Header.Get("Authorization")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer upstream.Close()
+
+	newCfg := func(apiKey string) config.Config {
+		return config.Config{
+			Mode: config.ModeTransform,
+			ProviderDefs: map[string]config.ProviderDef{
+				"main": {
+					BaseURL:  upstream.URL,
+					APIKey:   apiKey,
+					Protocol: config.ProtocolOpenAIChat,
+					Models:   map[string]config.ModelMeta{"m": {}},
+				},
+			},
+		}
+	}
+
+	cfg := newCfg("k1")
+	pm1, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"main": {
+				BaseURL:    upstream.URL,
+				APIKey:     "k1",
+				Protocol:   config.ProtocolOpenAIChat,
+				ModelNames: []string{"m"},
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	rt := runtime.NewRuntime(cfg, pm1, nil)
+	srv := New(Config{ProviderMgr: pm1, Runtime: rt})
+
+	// Request A's early steps: invalidates on pm1 and caches nothing yet.
+	if first := srv.activeChatClient("main"); first == nil {
+		t.Fatal("activeChatClient(main) = nil before reload")
+	}
+	// The reload swaps in pm2; request B invalidates (records pm2) and
+	// caches a pm2-keyed client.
+	if err := rt.Reload(newCfg("k2")); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	if second := srv.activeChatClient("main"); second == nil {
+		t.Fatal("activeChatClient(main) = nil after reload")
+	}
+
+	// Request A's late store: A had captured pm1 (now retired) and built
+	// a pm1-keyed client. The store must be refused.
+	stale := chat.NewClient(chat.ClientConfig{BaseURL: upstream.URL, APIKey: "k1"})
+	if srv.cacheChatClient(pm1, "main", stale) {
+		t.Fatal("cacheChatClient(pm1, main, stale) = true, want false: the caches belong to the post-reload manager")
+	}
+	// Same guard on the per-index cache path.
+	staleIdx := chat.NewClient(chat.ClientConfig{BaseURL: upstream.URL, APIKey: "k1"})
+	if srv.cacheChatClient(pm1, "main\x00"+"0", staleIdx) {
+		t.Fatal("cacheChatClient(pm1, per-index key, stale) = true, want false")
+	}
+	// Same guard on the google cache path.
+	staleGoogle := google.NewClient(google.ClientConfig{BaseURL: upstream.URL, APIKey: "k1"})
+	if srv.cacheGoogleClient(pm1, "main", staleGoogle) {
+		t.Fatal("cacheGoogleClient(pm1, main, stale) = true, want false")
+	}
+
+	// The cache must still hold the pm2 client and serve the NEW key.
+	srv.clientCacheMu.RLock()
+	cached := srv.clientCache["main"]
+	srv.clientCacheMu.RUnlock()
+	if cached == nil {
+		t.Fatal("clientCache[main] = nil after the refused store")
+	}
+	if cached == stale {
+		t.Fatal("clientCache[main] retained a client built from a retired manager's key")
+	}
+	req := &chat.ChatRequest{Model: "m", Messages: []chat.ChatMessage{{Role: "user", Content: "hi"}}}
+	if _, err := cached.CreateChat(context.Background(), req); err != nil {
+		t.Fatalf("CreateChat() error = %v", err)
+	}
+	mu.Lock()
+	got := auth
+	mu.Unlock()
+	if got != "Bearer k2" {
+		t.Fatalf("served client Authorization = %q, want %q (NEW key)", got, "Bearer k2")
+	}
+
+	// The google cache must be empty of stale clients too: the refused
+	// store must not have planted the pm1-keyed google client.
+	srv.googleCacheMu.RLock()
+	cachedGoogle := srv.googleCache["main"]
+	srv.googleCacheMu.RUnlock()
+	if cachedGoogle == staleGoogle {
+		t.Fatal("googleCache[main] retained a client built from a retired manager's key")
 	}
 }
