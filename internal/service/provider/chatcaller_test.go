@@ -162,6 +162,36 @@ func TestRotatingChatClientStream429(t *testing.T) {
 	}
 }
 
+// TestRotatingChatClientNilIndexClient checks that a missing per-index
+// client produces a graceful error from CreateChat and StreamChat instead
+// of a nil-pointer panic.
+func TestRotatingChatClientNilIndexClient(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "http://upstream.test", APIKey: "k1,k2"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	caller := NewRotatingChatClient(pm, "p", func(int) *chat.Client { return nil })
+	req := &chat.ChatRequest{Model: "m", Messages: []chat.ChatMessage{{Role: "user", Content: "hi"}}}
+
+	_, err = caller.CreateChat(context.Background(), req)
+	if err == nil {
+		t.Fatal("CreateChat() = nil error, want an error (no client for index)")
+	}
+	if want := "no chat client for provider \"p\" (key index 0)"; err.Error() != want {
+		t.Fatalf("CreateChat() error = %q, want %q", err.Error(), want)
+	}
+
+	_, err = caller.StreamChat(context.Background(), req)
+	if err == nil {
+		t.Fatal("StreamChat() = nil error, want an error (no client for index)")
+	}
+	if want := "no chat client for provider \"p\" (key index 0)"; err.Error() != want {
+		t.Fatalf("StreamChat() error = %q, want %q", err.Error(), want)
+	}
+}
+
 // TestChatCallerPlainChatClient checks that a plain *chat.Client satisfies
 // ChatCaller natively and flows through the interface without rotation.
 func TestChatCallerPlainChatClient(t *testing.T) {

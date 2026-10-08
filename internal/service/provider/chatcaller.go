@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"providerbridge/internal/protocol/chat"
 )
@@ -37,8 +38,12 @@ func NewRotatingChatClient(pm *ProviderManager, providerKey string, clientForInd
 func (c *rotatingChatClient) CreateChat(ctx context.Context, req *chat.ChatRequest) (*chat.ChatResponse, error) {
 	var resp *chat.ChatResponse
 	err := c.pm.runWithRotation(ctx, c.providerKey, func(idx int) error {
+		client := c.clientForIndex(idx)
+		if client == nil {
+			return fmt.Errorf("no chat client for provider %q (key index %d)", c.providerKey, idx)
+		}
 		var err error
-		resp, err = c.clientForIndex(idx).CreateChat(ctx, req)
+		resp, err = client.CreateChat(ctx, req)
 		return err
 	})
 	if err != nil {
@@ -50,8 +55,12 @@ func (c *rotatingChatClient) CreateChat(ctx context.Context, req *chat.ChatReque
 func (c *rotatingChatClient) StreamChat(ctx context.Context, req *chat.ChatRequest) (<-chan chat.ChatStreamChunk, error) {
 	var stream <-chan chat.ChatStreamChunk
 	err := c.pm.runWithRotation(ctx, c.providerKey, func(idx int) error {
+		client := c.clientForIndex(idx)
+		if client == nil {
+			return fmt.Errorf("no chat client for provider %q (key index %d)", c.providerKey, idx)
+		}
 		var err error
-		stream, err = c.clientForIndex(idx).StreamChat(ctx, req)
+		stream, err = client.StreamChat(ctx, req)
 		return err
 	})
 	if err != nil {
