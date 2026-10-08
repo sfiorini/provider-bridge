@@ -235,7 +235,16 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 	}
 
 	// === Phase 3: Build Runtime ===
+	// Attach key rotation persistence to the active manager (covers both
+	// the YAML build at :109 and the DB rebuild at :203) and to the runtime
+	// (covers runtime reloads via buildSnapshot).
+	if cs != nil {
+		providerMgr.SetKeyRotationStore(cs)
+	}
 	rt = runtime.NewRuntime(cfg, providerMgr, pricing)
+	if cs != nil {
+		rt.SetKeyRotationStore(cs)
+	}
 
 	// === Phase 4: Build Server with Runtime ===
 	// Create shared cache registry (used by both Bridge and Adapter paths).
