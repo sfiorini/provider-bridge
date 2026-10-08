@@ -12,6 +12,16 @@ import (
 	"providerbridge/internal/protocol/anthropic"
 )
 
+// AnthropicMessageClient is the anthropic call surface the Orchestrator
+// needs. *anthropic.Client and the bridge's rotating typed client both
+// satisfy it.
+type AnthropicMessageClient interface {
+	CreateMessage(ctx context.Context, req anthropic.MessageRequest) (anthropic.MessageResponse, error)
+	StreamMessage(ctx context.Context, req anthropic.MessageRequest) (anthropic.Stream, error)
+}
+
+var _ AnthropicMessageClient = (*anthropic.Client)(nil)
+
 // ToolHandler executes a tool given its input and returns a formatted result string.
 type ToolHandler func(context.Context, json.RawMessage) (string, error)
 
@@ -20,7 +30,7 @@ type ToolHandler func(context.Context, json.RawMessage) (string, error)
 // tool calls server-side via Tavily / Firecrawl.
 // It presents the same interface as anthropic.Client to callers.
 type Orchestrator struct {
-	anthropic    *anthropic.Client
+	anthropic    AnthropicMessageClient
 	tavily       *TavilyClient
 	firecrawl    *FirecrawlClient
 	maxRounds    int
@@ -29,7 +39,7 @@ type Orchestrator struct {
 
 // OrchestratorConfig configures the search orchestrator.
 type OrchestratorConfig struct {
-	Anthropic       *anthropic.Client
+	Anthropic       AnthropicMessageClient
 	TavilyKey       string
 	FirecrawlKey    string
 	SearchMaxRounds int
