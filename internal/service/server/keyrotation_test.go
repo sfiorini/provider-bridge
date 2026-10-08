@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync"
 	"testing"
 
@@ -318,6 +319,89 @@ func TestChatClientCacheInvalidatedOnManagerReload(t *testing.T) {
 	mu.Unlock()
 	if got != "Bearer k2" {
 		t.Fatalf("upstream Authorization (per-index) = %q, want %q (post-reload key)", got, "Bearer k2")
+	}
+}
+
+// TestChatClientsUseManagerHTTPClient checks that per-index and plain chat
+// clients are built with the manager's proxy-aware *http.Client
+// (ClientOverride), so their requests go through the configured egress
+// proxy instead of http.DefaultClient.
+func TestChatClientsUseManagerHTTPClient(t *testing.T) {
+	var proxyMu sync.Mutex
+	proxyHits := 0
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyMu.Lock()
+		proxyHits++
+		proxyMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer proxy.Close()
+	proxyURL, err := url.Parse(proxy.URL)
+	if err != nil {
+		t.Fatalf("Parse(proxy URL) error = %v", err)
+	}
+	override := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"main": {
+				BaseURL:        "http://upstream.test",
+				APIKey:         "k1,k2",
+				Protocol:       config.ProtocolOpenAIChat,
+				ModelNames:     []string{"m"},
+				ClientOverride: override,
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	cfg := config.Config{
+		Mode: config.ModeTransform,
+		ProviderDefs: map[string]config.ProviderDef{
+			"main": {
+				BaseURL:  "http://upstream.test",
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIChat,
+				Models:   map[string]config.ModelMeta{"m": {}},
+			},
+		},
+	}
+	srv := newKeyRotationServer(t, pm, cfg)
+
+	req := &chat.ChatRequest{Model: "m", Messages: []chat.ChatMessage{{Role: "user", Content: "hi"}}}
+
+	// Per-index client: the request must go through the proxy.
+	idxClient := srv.chatClientIndex("main", 0)
+	if idxClient == nil {
+		t.Fatal("chatClientIndex(main, 0) = nil")
+	}
+	if _, err := idxClient.CreateChat(context.Background(), req); err != nil {
+		t.Fatalf("CreateChat() (per-index) error = %v", err)
+	}
+	proxyMu.Lock()
+	hits := proxyHits
+	proxyMu.Unlock()
+	if hits != 1 {
+		t.Fatalf("proxy saw %d requests from the per-index client, want 1 (manager's proxy-aware client)", hits)
+	}
+
+	// Plain runtime-driven client: same requirement.
+	raw := srv.activeChatClient("main")
+	plain, ok := raw.(*chat.Client)
+	if !ok {
+		t.Fatalf("activeChatClient(main) = %T, want *chat.Client", raw)
+	}
+	if _, err := plain.CreateChat(context.Background(), req); err != nil {
+		t.Fatalf("CreateChat() (plain) error = %v", err)
+	}
+	proxyMu.Lock()
+	hits = proxyHits
+	proxyMu.Unlock()
+	if hits != 2 {
+		t.Fatalf("proxy saw %d requests total, want 2 (both clients proxy-aware)", hits)
 	}
 }
 

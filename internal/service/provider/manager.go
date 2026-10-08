@@ -515,6 +515,16 @@ func valueOrDefault(value, fallback string) string {
 	return value
 }
 
+// HTTPClient returns the provider's shared proxy-aware HTTP client (the
+// ClientOverride or the pooled client built from the provider's HTTP
+// settings). It returns nil for unknown providers; callers falling back to
+// http.DefaultClient on nil keep their existing behavior.
+func (pm *ProviderManager) HTTPClient(key string) *http.Client {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.httpClients[key]
+}
+
 // AnthropicClientIndex returns the anthropic client for the provider's API
 // key at rotation index idx, building and caching it lazily. All indices
 // share the provider's *http.Client (ClientOverride or pooled client).

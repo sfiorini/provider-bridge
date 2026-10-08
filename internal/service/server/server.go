@@ -143,10 +143,17 @@ func (s *Server) activeChatClient(providerKey string) any {
 
 	if snap := s.runtimeSnapshot(); snap != nil {
 		if def, ok := snap.Config.ProviderDefs[providerKey]; ok && def.Protocol == config.ProtocolOpenAIChat {
+			var httpClient *http.Client
+			if pm := s.activeProviderManager(); pm != nil {
+				// Egress-proxy correctness: route through the manager's
+				// proxy-aware client when one is configured.
+				httpClient = pm.HTTPClient(providerKey)
+			}
 			client := chat.NewClient(chat.ClientConfig{
 				BaseURL:   def.BaseURL,
 				APIKey:    s.chatAPIKey(providerKey),
 				UserAgent: def.UserAgent,
+				Client:    httpClient,
 			})
 			s.clientCacheMu.Lock()
 			s.clientCache[providerKey] = client
@@ -201,6 +208,9 @@ func (s *Server) chatClientIndex(providerKey string, idx int) *chat.Client {
 		BaseURL:   def.BaseURL,
 		APIKey:    apiKey,
 		UserAgent: def.UserAgent,
+		// Egress-proxy correctness: route through the manager's
+		// proxy-aware client when one is configured.
+		Client: pm.HTTPClient(providerKey),
 	})
 	s.clientCacheMu.Lock()
 	s.clientCache[cacheKey] = client
