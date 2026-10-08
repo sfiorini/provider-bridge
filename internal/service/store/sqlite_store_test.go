@@ -780,3 +780,60 @@ func TestSQLiteStoreApplyProviderCreateAndDelete(t *testing.T) {
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
+func TestKeyRotationStoreRoundTrip(t *testing.T) {
+	logger := testLogger(t)
+	c := store.NewConfigStoreConsumer(logger)
+	ts := newTestStore(t, "config_store", c.Tables())
+	if err := c.BindStore(ts); err != nil {
+		t.Fatalf("BindStore() error = %v", err)
+	}
+	cs := c.Store()
+	ctx := context.Background()
+
+	// Empty table: empty map, nil error.
+	idx, err := cs.LoadProviderKeyIndexes(ctx)
+	if err != nil {
+		t.Fatalf("LoadProviderKeyIndexes() on empty table error = %v", err)
+	}
+	if len(idx) != 0 {
+		t.Fatalf("LoadProviderKeyIndexes() on empty table = %v, want empty", idx)
+	}
+
+	// Upsert and read back.
+	if err := cs.SetProviderKeyIndex(ctx, "p", 1); err != nil {
+		t.Fatalf("SetProviderKeyIndex() error = %v", err)
+	}
+	idx, err = cs.LoadProviderKeyIndexes(ctx)
+	if err != nil {
+		t.Fatalf("LoadProviderKeyIndexes() error = %v", err)
+	}
+	if v, ok := idx["p"]; !ok || v != 1 {
+		t.Fatalf("LoadProviderKeyIndexes()[\"p\"] = %d (ok=%v), want 1", v, ok)
+	}
+
+	// SaveConfig must NOT wipe key_rotation (replaceConfigTx rewrites
+	// settings only).
+	if _, err := cs.SaveConfig(ctx, buildTestConfig()); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+	idx, err = cs.LoadProviderKeyIndexes(ctx)
+	if err != nil {
+		t.Fatalf("LoadProviderKeyIndexes() after SaveConfig error = %v", err)
+	}
+	if v, ok := idx["p"]; !ok || v != 1 {
+		t.Fatalf("LoadProviderKeyIndexes() after SaveConfig[\"p\"] = %d (ok=%v), want 1", v, ok)
+	}
+
+	// Overwrite to 0.
+	if err := cs.SetProviderKeyIndex(ctx, "p", 0); err != nil {
+		t.Fatalf("SetProviderKeyIndex() overwrite error = %v", err)
+	}
+	idx, err = cs.LoadProviderKeyIndexes(ctx)
+	if err != nil {
+		t.Fatalf("LoadProviderKeyIndexes() after overwrite error = %v", err)
+	}
+	if v, ok := idx["p"]; !ok || v != 0 {
+		t.Fatalf("LoadProviderKeyIndexes() after overwrite[\"p\"] = %d (ok=%v), want 0", v, ok)
+	}
+}

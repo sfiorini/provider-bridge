@@ -339,6 +339,39 @@ func buildSettings(fc config.FileConfig) map[string]string {
 	return settings
 }
 
+// --- Key rotation persistence ---
+
+// LoadProviderKeyIndexes reads the persisted active key index per provider.
+func (s *SQLiteConfigStore) LoadProviderKeyIndexes(ctx context.Context) (map[string]int, error) {
+	table := s.table("key_rotation")
+	rows, err := s.db.QueryContext(ctx, "SELECT provider_key, active_index FROM "+table)
+	if err != nil {
+		return nil, fmt.Errorf("query key_rotation: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]int)
+	for rows.Next() {
+		var key string
+		var idx int
+		if err := rows.Scan(&key, &idx); err != nil {
+			return nil, fmt.Errorf("scan key_rotation: %w", err)
+		}
+		out[key] = idx
+	}
+	return out, rows.Err()
+}
+
+// SetProviderKeyIndex upserts the active key index for a provider key.
+func (s *SQLiteConfigStore) SetProviderKeyIndex(ctx context.Context, providerKey string, idx int) error {
+	table := s.table("key_rotation")
+	if _, err := s.db.ExecContext(ctx,
+		"INSERT OR REPLACE INTO "+table+" (provider_key, active_index, updated_at) VALUES (?, ?, ?)",
+		providerKey, idx, nowStr()); err != nil {
+		return fmt.Errorf("upsert key_rotation %s: %w", providerKey, err)
+	}
+	return nil
+}
+
 // --- LoadAll ---
 
 // LoadAll reads the complete configuration from the main tables.

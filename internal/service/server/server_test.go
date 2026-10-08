@@ -1229,3 +1229,11 @@ func (s *fakeConfigStore) CurrentRevision() (string, error) {
 func (s *fakeConfigStore) ExportYAML(bool) ([]byte, error) {
 	return nil, nil
 }
+
+func (s *fakeConfigStore) LoadProviderKeyIndexes(context.Context) (map[string]int, error) {
+	return map[string]int{}, nil
+}
+
+func (s *fakeConfigStore) SetProviderKeyIndex(context.Context, string, int) error {
+	return nil
+}
