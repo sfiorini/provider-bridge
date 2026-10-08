@@ -225,6 +225,104 @@ func TestSQLiteStoreExportYAMLMasksShortAuthToken(t *testing.T) {
 	}
 }
 
+// TestSQLiteStoreExportYAMLMasksCommaAPIKey (S-5-3): a comma-separated key
+// list is one opaque secret value. Sanitized export must mask it via the same
+// maskAPIKey rules: len <= 8 masks entirely ("k1,k2", len 5 -> "******"),
+// longer lists mask first4+"****"+last4 ("key1,key2", len 9 -> "key1****key2").
+func TestSQLiteStoreExportYAMLMasksCommaAPIKey(t *testing.T) {
+	logger := testLogger(t)
+	c := store.NewConfigStoreConsumer(logger)
+
+	ts := newTestStore(t, "config_store", c.Tables())
+	if err := c.BindStore(ts); err != nil {
+		t.Fatalf("BindStore() error = %v", err)
+	}
+	cs := c.Store()
+	if cs == nil {
+		t.Fatal("Store() returned nil")
+	}
+
+	const shortList = "k1,k2"    // len 5 <= 8 -> fully masked
+	const longList = "key1,key2" // len 9 > 8 -> first4 + "****" + last4
+
+	cfg := buildTestConfig()
+	anthropic := cfg.ProviderDefs["anthropic"]
+	anthropic.APIKey = shortList
+	cfg.ProviderDefs["anthropic"] = anthropic
+	openai := cfg.ProviderDefs["openai"]
+	openai.APIKey = longList
+	cfg.ProviderDefs["openai"] = openai
+	if err := cs.SeedFromConfig(cfg); err != nil {
+		t.Fatalf("SeedFromConfig() error = %v", err)
+	}
+
+	// include_secrets=true must round-trip both raw comma lists.
+	withSecrets, err := cs.ExportYAML(true)
+	if err != nil {
+		t.Fatalf("ExportYAML(true) error = %v", err)
+	}
+	if !contains(string(withSecrets), shortList) {
+		t.Fatal("ExportYAML(true) omitted short comma api_key")
+	}
+	if !contains(string(withSecrets), longList) {
+		t.Fatal("ExportYAML(true) omitted long comma api_key")
+	}
+
+	// include_secrets=false must mask both.
+	masked, err := cs.ExportYAML(false)
+	if err != nil {
+		t.Fatalf("ExportYAML(false) error = %v", err)
+	}
+	maskedStr := string(masked)
+	if contains(maskedStr, shortList) {
+		t.Fatalf("ExportYAML(false) leaked short comma api_key %q", shortList)
+	}
+	if contains(maskedStr, "k1,****") {
+		t.Fatal("ExportYAML(false) leaked short comma api_key via per-segment masking")
+	}
+	if !contains(maskedStr, "******") {
+		t.Fatal("ExportYAML(false) did not fully mask short comma api_key")
+	}
+	if contains(maskedStr, longList) {
+		t.Fatalf("ExportYAML(false) leaked long comma api_key %q", longList)
+	}
+	if !contains(maskedStr, "key1****key2") {
+		t.Fatal("ExportYAML(false) did not mask long comma api_key as first4+****+last4")
+	}
+}
+
+// TestSQLiteStoreCommaAPIKeyRoundTrip (S-5-3): the store never parses comma
+// lists — LoadAll must return the canonical string unchanged.
+func TestSQLiteStoreCommaAPIKeyRoundTrip(t *testing.T) {
+	logger := testLogger(t)
+	c := store.NewConfigStoreConsumer(logger)
+
+	ts := newTestStore(t, "config_store", c.Tables())
+	if err := c.BindStore(ts); err != nil {
+		t.Fatalf("BindStore() error = %v", err)
+	}
+	cs := c.Store()
+	if cs == nil {
+		t.Fatal("Store() returned nil")
+	}
+
+	cfg := buildTestConfig()
+	anthropicDef := cfg.ProviderDefs["anthropic"]
+	anthropicDef.APIKey = "k1,k2"
+	cfg.ProviderDefs["anthropic"] = anthropicDef
+	if err := cs.SeedFromConfig(cfg); err != nil {
+		t.Fatalf("SeedFromConfig() error = %v", err)
+	}
+
+	loaded, err := cs.LoadAll()
+	if err != nil {
+		t.Fatalf("LoadAll() error = %v", err)
+	}
+	if got, want := loaded.ProviderDefs["anthropic"].APIKey, "k1,k2"; got != want {
+		t.Fatalf("LoadAll() anthropic api_key = %q, want canonical comma list %q", got, want)
+	}
+}
+
 func TestSQLiteStoreStageAndDiscardChanges(t *testing.T) {
 	logger := testLogger(t)
 	c := store.NewConfigStoreConsumer(logger)
