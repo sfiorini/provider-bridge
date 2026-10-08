@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -120,7 +121,7 @@ func (s *Server) activeChatClient(providerKey string) any {
 		if def, ok := snap.Config.ProviderDefs[providerKey]; ok && def.Protocol == config.ProtocolOpenAIChat {
 			client := chat.NewClient(chat.ClientConfig{
 				BaseURL:   def.BaseURL,
-				APIKey:    def.APIKey,
+				APIKey:    s.chatAPIKey(providerKey),
 				UserAgent: def.UserAgent,
 			})
 			s.clientCacheMu.Lock()
@@ -130,6 +131,74 @@ func (s *Server) activeChatClient(providerKey string) any {
 		}
 	}
 	return s.chatClients[providerKey]
+}
+
+// chatAPIKey returns the API key a plain chat client for providerKey must
+// use: the ACTIVE key — never the raw comma-separated list.
+func (s *Server) chatAPIKey(providerKey string) string {
+	if pm := s.activeProviderManager(); pm != nil {
+		if k := pm.ProviderAPIKey(providerKey); k != "" {
+			return k
+		}
+	}
+	if snap := s.runtimeSnapshot(); snap != nil {
+		if def, ok := snap.Config.ProviderDefs[providerKey]; ok {
+			return def.APIKey
+		}
+	}
+	return ""
+}
+
+// chatClientIndex returns the *chat.Client for the provider's API key at
+// rotation index idx, building and caching it on first use. Cache entries
+// are keyed "<provider>\x00<idx>" in s.clientCache.
+func (s *Server) chatClientIndex(providerKey string, idx int) *chat.Client {
+	cacheKey := providerKey + "\x00" + strconv.Itoa(idx)
+	s.clientCacheMu.RLock()
+	if cached, ok := s.clientCache[cacheKey]; ok {
+		s.clientCacheMu.RUnlock()
+		return cached
+	}
+	s.clientCacheMu.RUnlock()
+	pm := s.activeProviderManager()
+	if pm == nil {
+		return nil
+	}
+	apiKey := pm.ProviderAPIKeyIndex(providerKey, idx)
+	if apiKey == "" {
+		return nil
+	}
+	def, ok := s.activeProviderDefs()[providerKey]
+	if !ok || def.Protocol != config.ProtocolOpenAIChat {
+		return nil
+	}
+	client := chat.NewClient(chat.ClientConfig{
+		BaseURL:   def.BaseURL,
+		APIKey:    apiKey,
+		UserAgent: def.UserAgent,
+	})
+	s.clientCacheMu.Lock()
+	s.clientCache[cacheKey] = client
+	s.clientCacheMu.Unlock()
+	return client
+}
+
+// activeChatCaller returns the ChatCaller for providerKey: the rotating
+// caller when the provider has multiple API keys, otherwise the active
+// plain *chat.Client.
+func (s *Server) activeChatCaller(providerKey string) provider.ChatCaller {
+	pm := s.activeProviderManager()
+	if pm != nil && pm.ProviderKeyCount(providerKey) > 1 {
+		return provider.NewRotatingChatClient(pm, providerKey, func(idx int) *chat.Client {
+			return s.chatClientIndex(providerKey, idx)
+		})
+	}
+	if raw := s.activeChatClient(providerKey); raw != nil {
+		if c, ok := raw.(*chat.Client); ok {
+			return c
+		}
+	}
+	return nil
 }
 
 func (s *Server) activeGoogleClient(providerKey string) any {
