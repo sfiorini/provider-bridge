@@ -9,9 +9,9 @@ import (
 // content block's "thinking" field in both wire shapes.
 func TestExtractThinkingText(t *testing.T) {
 	tests := []struct {
-		name  string
-		raw   string
-		want  string
+		name string
+		raw  string
+		want string
 	}{
 		{"plain string", `"abc"`, "abc"},
 		{"array mixing objects and strings", `[{"text":"a"},"b",{"text":"c"}]`, "abc"},
