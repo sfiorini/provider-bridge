@@ -192,6 +192,28 @@ func TestReloadKeepsRotation(t *testing.T) {
 	}
 }
 
+// TestProviderAPIKeyFailsClosedOnEmptyKeySet checks that ProviderAPIKey never
+// falls back to the raw config APIKey string when a provider has no parsed
+// keys: the raw value may be a comma-separated list, and putting it into an
+// Authorization header would leak every key.
+func TestProviderAPIKeyFailsClosedOnEmptyKeySet(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	// Simulate an inconsistent manager state (provider configured but no
+	// parsed keys): ProviderAPIKey must fail closed with an empty string,
+	// not return the raw cfg.APIKey list.
+	pm.mu.Lock()
+	pm.apiKeys["p"] = nil
+	pm.mu.Unlock()
+	if k := pm.ProviderAPIKey("p"); k != "" {
+		t.Fatalf("ProviderAPIKey(p) = %q, want empty (fail closed, never the raw list)", k)
+	}
+}
+
 func TestProviderManagerKeyParsing(t *testing.T) {
 	// Multi-key provider: keys parse, active defaults to index 0.
 	pm, err := NewProviderManager(map[string]ProviderConfig{

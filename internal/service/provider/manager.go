@@ -660,11 +660,10 @@ func (pm *ProviderManager) ProviderAPIKey(key string) string {
 	defer pm.mu.RUnlock()
 	keys := pm.apiKeys[key]
 	if len(keys) == 0 {
-		cfg, ok := pm.providers[key]
-		if !ok {
-			return ""
-		}
-		return cfg.APIKey
+		// Fail closed: the raw cfg.APIKey may be a comma-separated
+		// list, and returning it here could leak every key into an
+		// Authorization header. No parsed keys means no usable key.
+		return ""
 	}
 	idx := pm.activeIdx[key]
 	if idx < 0 || idx >= len(keys) {
