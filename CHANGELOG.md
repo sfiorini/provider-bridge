@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-08
+
+### Fixed
+
+- Multi-turn chat conversations through consumers like LibreChat failed from the second turn on with a Mistral `422` (`reasoning_content` is not permitted on input messages). v0.2.0's issue-#11 fix made the bridge emit `reasoning_content` deltas, consumers replayed them in the next turn, and the chat provider adapter echoed them to every provider unconditionally. The upstream echo is now gated on the provider (DeepSeek only, matching the existing reasoning-replay precedent); consumer-side reasoning display is unchanged. Regression tests cover the exact replayed-conversation shape.
+
 ## [0.2.0] - 2026-10-08
 
 ### Added
