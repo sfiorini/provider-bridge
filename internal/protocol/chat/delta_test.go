@@ -1,7 +1,10 @@
 package chat
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"strings"
 	"testing"
 )
 
@@ -90,4 +93,36 @@ func TestDeltaUnmarshalJSON(t *testing.T) {
 			t.Fatalf("expected error, got none")
 		}
 	})
+}
+
+// TestReadStreamToleratesArrayDelta proves the SSE reader keeps the
+// issue-shaped array-form delta chunk (issue #11) and that a garbage data
+// line drops without killing the stream.
+func TestReadStreamToleratesArrayDelta(t *testing.T) {
+	issueChunk := `{"id":"1","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":[{"type":"thinking","thinking":[{"text":"hmm"}]},{"type":"text","text":"PONG"}]}}]}`
+	tailChunk := `{"id":"2","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"content":"TAIL"}}]}`
+	lines := "data: " + issueChunk + "\n" +
+		"data: not-json-garbage\n" +
+		"data: " + tailChunk + "\n" +
+		"data: " + "[" + "DONE" + "]" + "\n"
+
+	c := NewClient(ClientConfig{BaseURL: "http://unused.test"})
+	ch := make(chan ChatStreamChunk, 8)
+	c.readStream(context.Background(), io.NopCloser(strings.NewReader(lines)), ch)
+
+	var got []ChatStreamChunk
+	for chunk := range ch {
+		got = append(got, chunk)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d chunks, want 2: %+v", len(got), got)
+	}
+	d0 := got[0].Choices[0].Delta
+	if d0.Content != "PONG" || d0.ReasoningContent != "hmm" {
+		t.Fatalf("chunk0 delta = %+v, want Content %q and ReasoningContent %q", d0, "PONG", "hmm")
+	}
+	d1 := got[1].Choices[0].Delta
+	if d1.Content != "TAIL" {
+		t.Fatalf("chunk1 delta = %+v, want Content %q", d1, "TAIL")
+	}
 }
