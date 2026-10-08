@@ -294,9 +294,9 @@ func (s *Server) handleWithAdapters(
 
 		// Wrap provider with search orchestrator if web search is "injected".
 		if wsInjected {
-			if acc, ok := effectiveProvider.(provider.AnthropicClientAccessor); ok {
+			if typedClient, terr := provider.AsAnthropicUpstream(effectiveProvider); terr == nil {
 				wrapped := websearchinjected.WrapProvider(
-					acc.AnthropicClient(),
+					typedClient,
 					searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds, s.proxyHTTP,
 				)
 				effectiveProvider = &searchProviderAdapter{wrapped: wrapped}
@@ -325,18 +325,43 @@ func (s *Server) handleWithAdapters(
 				upstreamReq = &strippedReq
 			}
 			var upstreamRespMsg anthropic.MessageResponse
-			var rawResp any
-			rawResp, err = effectiveProvider.CreateMessage(ctx, *upstreamReq)
-			if err == nil {
-				var okt bool
-				upstreamRespMsg, okt = rawResp.(anthropic.MessageResponse)
-				if !okt {
-					err = fmt.Errorf("unexpected anthropic response type %T", rawResp)
-				} else {
-					// Normal path: convert back to CoreResponse.
-					msgResp := upstreamRespMsg
-					coreResp, err = providerToCoreResponse(ctx, providerAdapter, coreReq, &msgResp)
+			if !wsInjected {
+				// Typed anthropic call: rotation (if any) happens inside the
+				// rotating client returned by AsAnthropicUpstream.
+				typedClient, terr := provider.AsAnthropicUpstream(effectiveProvider)
+				if terr != nil {
+					log.Error("adapter path: provider does not support anthropic upstream", "provider", preferred.ProviderKey)
+					payload := openai.ErrorResponse{
+						Error: openai.ErrorObject{
+							Message: fmt.Sprintf("provider %q does not support anthropic upstream calls", preferred.ProviderKey),
+							Type:    "server_error",
+							Code:    "internal_error",
+						},
+					}
+					record.Error = traceError("anthropic_upstream", terr)
+					record.OpenAIResponse = payload
+					adapterHookErr = "anthropic_upstream"
+					writeOpenAIError(w, http.StatusInternalServerError, payload)
+					return
 				}
+				upstreamRespMsg, err = typedClient.CreateMessage(ctx, *upstreamReq)
+			} else {
+				// wsInjected: the search orchestrator already holds the rotating
+				// typed client and rotates internally; the adapter returns any.
+				var rawResp any
+				rawResp, err = effectiveProvider.CreateMessage(ctx, *upstreamReq)
+				if err == nil {
+					var okt bool
+					upstreamRespMsg, okt = rawResp.(anthropic.MessageResponse)
+					if !okt {
+						err = fmt.Errorf("unexpected anthropic response type %T", rawResp)
+					}
+				}
+			}
+			if err == nil {
+				// Normal path: convert back to CoreResponse.
+				msgResp := upstreamRespMsg
+				coreResp, err = providerToCoreResponse(ctx, providerAdapter, coreReq, &msgResp)
 			}
 		}
 		if err != nil {
@@ -1100,10 +1125,11 @@ func (s *Server) handleAdapterStream(
 		}
 
 		// StreamMessage on ProviderClient returns <-chan any, losing the concrete type.
-		// Get the inner anthropic.Client directly so ToCoreStream receives anthropic.Stream.
-		acc, ok := effectiveProvider.(provider.AnthropicClientAccessor)
-		if !ok {
-			log.Error("adapter stream: provider does not support AnthropicClientAccessor", "provider", candidate.ProviderKey)
+		// Get the typed anthropic client (rotating for multi-key providers) so
+		// ToCoreStream receives anthropic.Stream and calls rotate on 429/402.
+		typedClient, terr := provider.AsAnthropicUpstream(effectiveProvider)
+		if terr != nil {
+			log.Error("adapter stream: provider does not support anthropic streaming", "provider", candidate.ProviderKey)
 			payload := openai.ErrorResponse{
 				Error: openai.ErrorObject{
 					Message: "provider does not support anthropic streaming",
@@ -1111,7 +1137,7 @@ func (s *Server) handleAdapterStream(
 					Code:    "provider_error",
 				},
 			}
-			streamRecord.Error = traceError("stream_accessor", fmt.Errorf("provider %q not AnthropicClientAccessor", candidate.ProviderKey))
+			streamRecord.Error = traceError("stream_accessor", fmt.Errorf("provider %q does not support anthropic streaming", candidate.ProviderKey))
 			streamRecord.OpenAIResponse = payload
 			writeOpenAIError(w, http.StatusInternalServerError, payload)
 			return
@@ -1143,7 +1169,7 @@ func (s *Server) handleAdapterStream(
 			}
 			coreEvents = coreResponseToCoreStream(ctx, coreResp)
 		} else {
-			stream, err := acc.AnthropicClient().StreamMessage(ctx, *anthReq)
+			stream, err := typedClient.StreamMessage(ctx, *anthReq)
 			if err != nil {
 				log.Error("adapter stream: StreamMessage failed", "error", err)
 				payload := openai.ErrorResponse{
