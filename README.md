@@ -28,6 +28,8 @@ consumer sees the change.
   of truth, managed through `/api/v1/` (`config.yml` is the seed and mirror).
 - **Model aliases and routes** — map a consumer-facing alias to any
   `provider/model` upstream, resolved at request time.
+- **Multiple API keys per provider** — a comma-separated `api_key` rotates to
+  the next key on HTTP 429/402 and remembers the active key across restarts.
 
 ## Consumers
 

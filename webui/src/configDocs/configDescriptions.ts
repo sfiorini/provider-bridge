@@ -341,7 +341,7 @@ export const configDescriptions: Record<ConfigPath, ConfigDocEntry> = {
   "providers.<key>.api_key": entry(
     "providers.<key>.api_key",
     "Upstream API key",
-    "API key for this provider. Shown masked; enter a new value to update it.",
+    "API key for this provider. Accepts multiple keys separated by commas; on HTTP 429/402 the bridge retries with the next key. Shown masked; enter a new value to update it.",
     "string",
     undefined,
     true

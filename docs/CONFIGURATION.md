@@ -253,6 +253,34 @@ providers:
           cache_read_price: 0.25
 ```
 
+### Multiple API keys (accounts) per provider
+
+`api_key` accepts **multiple keys separated by commas**:
+
+```yaml
+providers:
+  my-provider:
+    api_key: "sk-first,sk-second,sk-third"
+```
+
+- The **first** key has precedence; a value without commas is a single key
+  and behaves exactly as before.
+- On HTTP **429** (rate limited) or **402** (quota exhausted) the bridge
+  retries the *same request* with the next key, immediately (no backoff).
+- The key that succeeds becomes the **active** key and is remembered across
+  restarts (persisted in the `key_rotation` table of the config graph — it is
+  not part of `config.yml`).
+- After a full rotation (every key returned 429/402) the active key's error
+  is surfaced as before; mid-stream failures are not retried.
+- Rotation covers every model-upstream call path (Core executor,
+  Responses-inbound adapter path, web-search loops, and the raw OpenAI
+  Responses passthrough). Google-genai upstreams are excluded.
+- Masking is unchanged: the whole value is masked (`******`) in graph reads
+  and exports, and `PATCH` with `"******"` keeps the existing value.
+
+See [COOKBOOK.md](COOKBOOK.md#9-add-a-second-api-key-account-for-rate-limit-headroom)
+for a worked recipe.
+
 ### Protocol values
 
 | Value | Upstream format | Adapter package |
