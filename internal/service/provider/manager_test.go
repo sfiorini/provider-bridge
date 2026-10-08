@@ -2,9 +2,9 @@ package provider
 
 import (
 	"context"
-	"providerbridge/internal/protocol/anthropic"
 	"net/http"
 	"net/http/httptest"
+	"providerbridge/internal/protocol/anthropic"
 	"strings"
 	"testing"
 
@@ -653,10 +653,11 @@ func TestModelSupportsImage(t *testing.T) {
 	pm, err := NewProviderManager(map[string]ProviderConfig{
 		"p": {
 			BaseURL: "https://p.example.test",
+			APIKey:  "test-key",
 			Models: map[string]ModelMeta{
-				"gpt-vision":   {InputModalities: []string{"text", "image"}},
-				"gpt-text":     {InputModalities: []string{"text"}},
-				"no-modality":  {},
+				"gpt-vision":  {InputModalities: []string{"text", "image"}},
+				"gpt-text":    {InputModalities: []string{"text"}},
+				"no-modality": {},
 			},
 		},
 	}, nil)

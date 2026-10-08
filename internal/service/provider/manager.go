@@ -143,6 +143,12 @@ type ProviderManager struct {
 	defaultK       string                          // default provider key
 	resolvedWS     map[string]string               // provider key -> resolved web search support
 	modelProviders map[string][]modelProviderEntry // upstream model name -> (provider key, priority) (reverse index)
+
+	apiKeys          map[string][]string                  // provider key -> parsed API keys (len>1 => rotation)
+	httpClients      map[string]*http.Client              // provider key -> shared HTTP client (override or pool)
+	activeIdx        map[string]int                       // provider key -> active key index (guarded by mu)
+	keyClientPools   map[string]map[int]*anthropic.Client // provider key -> idx -> lazy typed client (guarded by mu)
+	keyRotationStore KeyRotationStore
 }
 
 // NewProviderManager creates a ProviderManager from provider configs and model routes.
@@ -150,10 +156,14 @@ type ProviderManager struct {
 // routes: model alias -> ModelRoute
 func NewProviderManager(providerCfgs map[string]ProviderConfig, routes map[string]ModelRoute) (*ProviderManager, error) {
 	pm := &ProviderManager{
-		clients:    make(map[string]ProviderClient, len(providerCfgs)),
-		providers:  providerCfgs,
-		routes:     routes,
-		resolvedWS: make(map[string]string, len(providerCfgs)),
+		clients:        make(map[string]ProviderClient, len(providerCfgs)),
+		providers:      providerCfgs,
+		routes:         routes,
+		resolvedWS:     make(map[string]string, len(providerCfgs)),
+		apiKeys:        make(map[string][]string, len(providerCfgs)),
+		httpClients:    make(map[string]*http.Client, len(providerCfgs)),
+		activeIdx:      make(map[string]int, len(providerCfgs)),
+		keyClientPools: make(map[string]map[int]*anthropic.Client, len(providerCfgs)),
 	}
 
 	// Build clients for each provider config.
@@ -165,6 +175,12 @@ func NewProviderManager(providerCfgs map[string]ProviderConfig, routes map[strin
 		if httpClient == nil {
 			httpClient = newHTTPClient(cfg.HTTP)
 		}
+		keys := config.SplitAPIKeys(cfg.APIKey)
+		if len(keys) == 0 {
+			return nil, fmt.Errorf("provider %q: api_key is required", key)
+		}
+		pm.apiKeys[key] = keys
+		pm.httpClients[key] = httpClient
 		pm.clients[key] = &anthropicClientAdapter{client: anthropic.NewClient(anthropic.ClientConfig{
 			BaseURL:   cfg.BaseURL,
 			APIKey:    cfg.APIKey,
@@ -566,15 +582,56 @@ func (pm *ProviderManager) ProviderBaseURL(key string) string {
 	return cfg.BaseURL
 }
 
-// ProviderAPIKey returns the API key for a given provider key.
+// ProviderAPIKey returns the ACTIVE API key for a given provider key. For
+// multi-key (comma-separated) providers this is the key at the current
+// active rotation index — never the raw comma-separated list, so callers
+// that put this value into Authorization headers can never leak the full list.
 func (pm *ProviderManager) ProviderAPIKey(key string) string {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	cfg, ok := pm.providers[key]
-	if !ok {
+	keys := pm.apiKeys[key]
+	if len(keys) == 0 {
+		cfg, ok := pm.providers[key]
+		if !ok {
+			return ""
+		}
+		return cfg.APIKey
+	}
+	idx := pm.activeIdx[key]
+	if idx < 0 || idx >= len(keys) {
+		idx = 0
+	}
+	return keys[idx]
+}
+
+// ProviderKeyCount returns the number of API keys configured for a provider.
+func (pm *ProviderManager) ProviderKeyCount(key string) int {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return len(pm.apiKeys[key])
+}
+
+// ProviderAPIKeyIndex returns the API key at the given rotation index
+// ("" when the provider or index is out of range).
+func (pm *ProviderManager) ProviderAPIKeyIndex(key string, idx int) string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	keys := pm.apiKeys[key]
+	if idx < 0 || idx >= len(keys) {
 		return ""
 	}
-	return cfg.APIKey
+	return keys[idx]
+}
+
+// ActiveKeyIndex returns the active rotation index for a provider (default 0).
+func (pm *ProviderManager) ActiveKeyIndex(key string) int {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	idx, ok := pm.activeIdx[key]
+	if !ok || idx < 0 {
+		return 0
+	}
+	return idx
 }
 
 // ProviderKeyForModel returns the provider key that serves the given model alias.
