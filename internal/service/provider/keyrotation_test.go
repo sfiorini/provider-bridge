@@ -2,13 +2,17 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"providerbridge/internal/config"
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/chat"
 )
 
 func TestAnthropicClientIndexPool(t *testing.T) {
@@ -246,4 +250,184 @@ func TestProviderManagerKeyParsing(t *testing.T) {
 	if idx := pm.ActiveKeyIndex("missing"); idx != 0 {
 		t.Fatalf("ActiveKeyIndex(\"missing) = %d, want 0", idx)
 	}
+}
+
+// TestRunWithRotation exercises the rotation engine with fake attempt
+// functions that record the rotation indexes they were called with.
+func TestRunWithRotation(t *testing.T) {
+	newPM := func(t *testing.T, apiKey string) *ProviderManager {
+		t.Helper()
+		pm, err := NewProviderManager(map[string]ProviderConfig{
+			"p": {BaseURL: "https://p.example", APIKey: apiKey},
+		}, nil)
+		if err != nil {
+			t.Fatalf("NewProviderManager() error = %v", err)
+		}
+		return pm
+	}
+
+	// The plan's expected call list [0,2] is inconsistent with its binding
+	// rotation-order code ([active..n-1,0..] yields sequential indexes 0,1,2);
+	// the binding code wins: the fake fails 429 at idx 0 and 1 and succeeds
+	// at idx 2, so the recorded calls are [0,1,2] with the active index
+	// advanced to 2. The single-429 variant is covered by its own subtest.
+	t.Run("429s then success at idx 2 advances active index", func(t *testing.T) {
+		pm := newPM(t, "k1,k2,k3")
+		var calls []int
+		err := pm.runWithRotation(context.Background(), "p", func(idx int) error {
+			calls = append(calls, idx)
+			if idx < 2 {
+				return &anthropic.ProviderError{StatusCode: http.StatusTooManyRequests, Message: "rate limited"}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("runWithRotation() error = %v, want nil", err)
+		}
+		if want := []int{0, 1, 2}; !slicesEqual(calls, want) {
+			t.Fatalf("call indexes = %v, want %v", calls, want)
+		}
+		if idx := pm.ActiveKeyIndex("p"); idx != 2 {
+			t.Fatalf("ActiveKeyIndex(p) = %d, want 2", idx)
+		}
+	})
+
+	t.Run("429 then immediate success advances one key", func(t *testing.T) {
+		pm := newPM(t, "k1,k2,k3")
+		var calls []int
+		err := pm.runWithRotation(context.Background(), "p", func(idx int) error {
+			calls = append(calls, idx)
+			if idx == 0 {
+				return &anthropic.ProviderError{StatusCode: http.StatusTooManyRequests, Message: "rate limited"}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("runWithRotation() error = %v, want nil", err)
+		}
+		if want := []int{0, 1}; !slicesEqual(calls, want) {
+			t.Fatalf("call indexes = %v, want %v", calls, want)
+		}
+		if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+			t.Fatalf("ActiveKeyIndex(p) = %d, want 1", idx)
+		}
+	})
+
+	t.Run("non-rotatable error returns immediately", func(t *testing.T) {
+		pm := newPM(t, "k1,k2,k3")
+		var calls []int
+		wantErr := &anthropic.ProviderError{StatusCode: http.StatusInternalServerError, Message: "boom"}
+		err := pm.runWithRotation(context.Background(), "p", func(idx int) error {
+			calls = append(calls, idx)
+			return wantErr
+		})
+		if err == nil {
+			t.Fatal("runWithRotation() = nil, want error")
+		}
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("runWithRotation() error = %v, want the original 500 error", err)
+		}
+		if want := []int{0}; !slicesEqual(calls, want) {
+			t.Fatalf("call indexes = %v, want %v (no rotation)", calls, want)
+		}
+		if idx := pm.ActiveKeyIndex("p"); idx != 0 {
+			t.Fatalf("ActiveKeyIndex(p) = %d, want 0 (unchanged)", idx)
+		}
+	})
+
+	t.Run("all keys fail with 402 returns first error", func(t *testing.T) {
+		pm := newPM(t, "k1,k2,k3")
+		var calls []int
+		err := pm.runWithRotation(context.Background(), "p", func(idx int) error {
+			calls = append(calls, idx)
+			return &chat.ProviderError{StatusCode: http.StatusPaymentRequired, Message: fmt.Sprintf("quota exhausted k%d", idx+1)}
+		})
+		if err == nil {
+			t.Fatal("runWithRotation() = nil, want error")
+		}
+		if err.Error() != "quota exhausted k1" {
+			t.Fatalf("runWithRotation() error = %q, want the FIRST attempt's error %q", err.Error(), "quota exhausted k1")
+		}
+		if want := []int{0, 1, 2}; !slicesEqual(calls, want) {
+			t.Fatalf("call indexes = %v, want %v", calls, want)
+		}
+	})
+
+	t.Run("single key 429 no rotation machinery", func(t *testing.T) {
+		pm := newPM(t, "k1")
+		var calls []int
+		err := pm.runWithRotation(context.Background(), "p", func(idx int) error {
+			calls = append(calls, idx)
+			return &anthropic.ProviderError{StatusCode: http.StatusTooManyRequests, Message: "rate limited"}
+		})
+		if err == nil {
+			t.Fatal("runWithRotation() = nil, want error")
+		}
+		if err.Error() != "rate limited" {
+			t.Fatalf("runWithRotation() error = %q, want %q", err.Error(), "rate limited")
+		}
+		if want := []int{0}; !slicesEqual(calls, want) {
+			t.Fatalf("call indexes = %v, want %v", calls, want)
+		}
+	})
+
+	t.Run("context cancelled between attempts", func(t *testing.T) {
+		pm := newPM(t, "k1,k2,k3")
+		ctx, cancel := context.WithCancel(context.Background())
+		var calls []int
+		err := pm.runWithRotation(ctx, "p", func(idx int) error {
+			calls = append(calls, idx)
+			cancel()
+			return &anthropic.ProviderError{StatusCode: http.StatusTooManyRequests, Message: "rate limited"}
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runWithRotation() error = %v, want context.Canceled", err)
+		}
+		if want := []int{0}; !slicesEqual(calls, want) {
+			t.Fatalf("call indexes = %v, want %v (no further attempt after cancel)", calls, want)
+		}
+	})
+
+	t.Run("unknown provider", func(t *testing.T) {
+		pm := newPM(t, "k1,k2")
+		err := pm.runWithRotation(context.Background(), "missing", func(idx int) error { return nil })
+		if err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Fatalf("runWithRotation(missing) = %v, want provider-not-found error", err)
+		}
+	})
+}
+
+// TestIsRotatableError checks the 429/402-only rotation trigger rule.
+func TestIsRotatableError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"anthropic 429", &anthropic.ProviderError{StatusCode: http.StatusTooManyRequests}, true},
+		{"anthropic 402", &anthropic.ProviderError{StatusCode: http.StatusPaymentRequired}, true},
+		{"anthropic 500", &anthropic.ProviderError{StatusCode: http.StatusInternalServerError}, false},
+		{"anthropic 401", &anthropic.ProviderError{StatusCode: http.StatusUnauthorized}, false},
+		{"chat 429", &chat.ProviderError{StatusCode: http.StatusTooManyRequests}, true},
+		{"chat 402", &chat.ProviderError{StatusCode: http.StatusPaymentRequired}, true},
+		{"chat 500", &chat.ProviderError{StatusCode: http.StatusInternalServerError}, false},
+		{"plain error", errors.New("network down"), false},
+	}
+	for _, tc := range cases {
+		if got := isRotatableError(tc.err); got != tc.want {
+			t.Errorf("%s: isRotatableError() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func slicesEqual(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

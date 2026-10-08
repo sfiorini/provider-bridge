@@ -5,8 +5,14 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
+
+	"providerbridge/internal/protocol/anthropic"
+	"providerbridge/internal/protocol/chat"
 )
 
 // KeyRotationStore persists the active API-key rotation index per provider.
@@ -75,4 +81,63 @@ func (pm *ProviderManager) advanceKeyIndex(providerKey string, from, to int) boo
 		}()
 	}
 	return true
+}
+
+// runWithRotation executes attempt once per API key of the provider,
+// starting at the active index in rotation order [active, active+1, …,
+// n-1, 0, …, active-1] (at most n attempts). Only rotatable errors — typed
+// provider errors with HTTP status 429 or 402 — trigger an immediate retry
+// with the next key (no backoff). Non-rotatable errors and context
+// cancellation return immediately. On success at an index different from
+// the start index, the active index is CAS-advanced and persisted
+// asynchronously. On full rotation failure the FIRST (active key's) attempt
+// error is returned.
+func (pm *ProviderManager) runWithRotation(ctx context.Context, providerKey string, attempt func(idx int) error) error {
+	n := pm.ProviderKeyCount(providerKey)
+	if n == 0 {
+		return fmt.Errorf("provider %q not found", providerKey)
+	}
+	start := pm.ActiveKeyIndex(providerKey)
+	var firstErr error
+	for k := 0; k < n; k++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		idx := (start + k) % n
+		err := attempt(idx)
+		if err == nil {
+			if idx != start {
+				pm.advanceKeyIndex(providerKey, start, idx)
+			}
+			return nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		if !isRotatableError(err) {
+			return err
+		}
+		if k < n-1 {
+			slog.Warn("upstream key rotation: retrying with next API key",
+				"provider", providerKey, "from_index", idx, "to_index", (idx+1)%n)
+		}
+	}
+	return firstErr
+}
+
+// isRotatableError reports whether an upstream error should trigger key
+// rotation: typed provider errors with HTTP status 429 (rate limited) or
+// 402 (payment required / quota exhausted).
+func isRotatableError(err error) bool {
+	var anthroErr *anthropic.ProviderError
+	if errors.As(err, &anthroErr) {
+		return anthroErr.StatusCode == http.StatusTooManyRequests ||
+			anthroErr.StatusCode == http.StatusPaymentRequired
+	}
+	var chatErr *chat.ProviderError
+	if errors.As(err, &chatErr) {
+		return chatErr.StatusCode == http.StatusTooManyRequests ||
+			chatErr.StatusCode == http.StatusPaymentRequired
+	}
+	return false
 }
