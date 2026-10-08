@@ -501,7 +501,7 @@ func (s *Server) handleWithAdapters(
 
 		var chatResp *chat.ChatResponse
 		if wsInjected {
-			chatResp, err = s.executeChatSearchLoop(ctx, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+			chatResp, err = s.executeChatSearchLoop(ctx, preferred.ProviderKey, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 		} else {
 			chatResp, err = chatClient.CreateChat(ctx, chatReq)
 		}
@@ -1336,7 +1336,7 @@ func (s *Server) handleAdapterStream(
 
 		if wsInjected {
 			searchCfg := s.resolvedSearchConfig(candidate.ProviderKey, openAIReq.Model)
-			chatStream, err = s.chatSearchBufferedStream(ctx, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+			chatStream, err = s.chatSearchBufferedStream(ctx, candidate.ProviderKey, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 		} else {
 			chatStream, err = chatClient.StreamChat(ctx, chatReq)
 		}
