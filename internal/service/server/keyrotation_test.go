@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"sync"
 	"testing"
 
@@ -452,18 +453,6 @@ func (k *keyRecorder) snapshot() []string {
 	return out
 }
 
-func equalKeys(got, want []string) bool {
-	if len(got) != len(want) {
-		return false
-	}
-	for i := range got {
-		if got[i] != want[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // newRotationRegistry builds a dispatch registry with the inbound client
 // adapter for the given inbound protocol registered alongside the provider
 // adapter (newDispatchRegistry only registers inbound OpenAI-responses).
@@ -543,7 +532,7 @@ func TestCoreUpstreamAnthropicRotation(t *testing.T) {
 	if !bytes.Contains(recorder.Body.Bytes(), []byte("anthropic rotated")) {
 		t.Fatalf("response body missing rotated content: %s", recorder.Body.String())
 	}
-	if keys := rec.snapshot(); !equalKeys(keys, []string{"k1", "k2"}) {
+	if keys := rec.snapshot(); !slices.Equal(keys, []string{"k1", "k2"}) {
 		t.Fatalf("upstream keys = %v, want [k1 k2]", keys)
 	}
 	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
@@ -616,7 +605,7 @@ func TestCoreUpstreamChatRotation(t *testing.T) {
 	if !bytes.Contains(recorder.Body.Bytes(), []byte("chat rotated")) {
 		t.Fatalf("response body missing rotated content: %s", recorder.Body.String())
 	}
-	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+	if keys := rec.snapshot(); !slices.Equal(keys, []string{"Bearer k1", "Bearer k2"}) {
 		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
 	}
 	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
@@ -666,7 +655,7 @@ func TestPassthroughRotation(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+	if keys := rec.snapshot(); !slices.Equal(keys, []string{"Bearer k1", "Bearer k2"}) {
 		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
 	}
 }
@@ -715,7 +704,7 @@ func TestPassthroughRotationFullFailureReplaysActiveKeyBody(t *testing.T) {
 	if got := recorder.Body.String(); got != "first" {
 		t.Fatalf("response body = %q, want the active-key body %q verbatim", got, "first")
 	}
-	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+	if keys := rec.snapshot(); !slices.Equal(keys, []string{"Bearer k1", "Bearer k2"}) {
 		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
 	}
 }
@@ -765,7 +754,7 @@ func TestPassthroughRotationNoAdvanceOnNon2xx(t *testing.T) {
 	if got := recorder.Body.String(); got != "boom" {
 		t.Fatalf("response body = %q, want the k2 500 body %q", got, "boom")
 	}
-	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+	if keys := rec.snapshot(); !slices.Equal(keys, []string{"Bearer k1", "Bearer k2"}) {
 		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
 	}
 	if idx := pm.ActiveKeyIndex("openai"); idx != 0 {
@@ -819,7 +808,7 @@ func TestPassthroughRotationStartsAtActiveIndex(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k2", "Bearer k1"}) {
+	if keys := rec.snapshot(); !slices.Equal(keys, []string{"Bearer k2", "Bearer k1"}) {
 		t.Fatalf("upstream keys = %v, want [Bearer k2 Bearer k1]", keys)
 	}
 	if idx := pm.ActiveKeyIndex("openai"); idx != 0 {

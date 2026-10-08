@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -311,7 +312,7 @@ func TestRunWithRotation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runWithRotation() error = %v, want nil", err)
 		}
-		if want := []int{0, 1, 2}; !slicesEqual(calls, want) {
+		if want := []int{0, 1, 2}; !slices.Equal(calls, want) {
 			t.Fatalf("call indexes = %v, want %v", calls, want)
 		}
 		if idx := pm.ActiveKeyIndex("p"); idx != 2 {
@@ -332,7 +333,7 @@ func TestRunWithRotation(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runWithRotation() error = %v, want nil", err)
 		}
-		if want := []int{0, 1}; !slicesEqual(calls, want) {
+		if want := []int{0, 1}; !slices.Equal(calls, want) {
 			t.Fatalf("call indexes = %v, want %v", calls, want)
 		}
 		if idx := pm.ActiveKeyIndex("p"); idx != 1 {
@@ -354,7 +355,7 @@ func TestRunWithRotation(t *testing.T) {
 		if !errors.Is(err, wantErr) {
 			t.Fatalf("runWithRotation() error = %v, want the original 500 error", err)
 		}
-		if want := []int{0}; !slicesEqual(calls, want) {
+		if want := []int{0}; !slices.Equal(calls, want) {
 			t.Fatalf("call indexes = %v, want %v (no rotation)", calls, want)
 		}
 		if idx := pm.ActiveKeyIndex("p"); idx != 0 {
@@ -375,7 +376,7 @@ func TestRunWithRotation(t *testing.T) {
 		if err.Error() != "quota exhausted k1" {
 			t.Fatalf("runWithRotation() error = %q, want the FIRST attempt's error %q", err.Error(), "quota exhausted k1")
 		}
-		if want := []int{0, 1, 2}; !slicesEqual(calls, want) {
+		if want := []int{0, 1, 2}; !slices.Equal(calls, want) {
 			t.Fatalf("call indexes = %v, want %v", calls, want)
 		}
 	})
@@ -393,7 +394,7 @@ func TestRunWithRotation(t *testing.T) {
 		if err.Error() != "rate limited" {
 			t.Fatalf("runWithRotation() error = %q, want %q", err.Error(), "rate limited")
 		}
-		if want := []int{0}; !slicesEqual(calls, want) {
+		if want := []int{0}; !slices.Equal(calls, want) {
 			t.Fatalf("call indexes = %v, want %v", calls, want)
 		}
 	})
@@ -410,7 +411,7 @@ func TestRunWithRotation(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("runWithRotation() error = %v, want context.Canceled", err)
 		}
-		if want := []int{0}; !slicesEqual(calls, want) {
+		if want := []int{0}; !slices.Equal(calls, want) {
 			t.Fatalf("call indexes = %v, want %v (no further attempt after cancel)", calls, want)
 		}
 	})
@@ -445,18 +446,6 @@ func TestIsRotatableError(t *testing.T) {
 			t.Errorf("%s: isRotatableError() = %v, want %v", tc.name, got, tc.want)
 		}
 	}
-}
-
-func slicesEqual(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // TestRotatingAnthropicClient429 checks that a multi-key provider's
