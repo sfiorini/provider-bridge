@@ -198,6 +198,13 @@ func (s *Server) handleWithAdapters(
 	wsInjected := s.injectCoreWebSearch(ctx, coreReq, preferred, openAIReq, wsMode)
 	searchCfg := s.resolvedSearchConfig(preferred.ProviderKey, openAIReq.Model)
 
+	// Tell the adapter which provider it is converting for: the chat adapter
+	// gates the reasoning_content echo on this (DeepSeek requires it, others 422).
+	if coreReq.Extensions == nil {
+		coreReq.Extensions = make(map[string]any)
+	}
+	coreReq.Extensions["provider_key"] = preferred.ProviderKey
+
 	upstreamAny, err := providerAdapter.FromCoreRequest(ctx, coreReq)
 	if err != nil {
 		log.Error("adapter path: FromCoreRequest failed", "error", err)
@@ -2139,24 +2146,33 @@ func coreBlockHasImage(block format.CoreContentBlock) bool {
 // CoreProvider so the visual orchestrator can operate on format.CoreRequest
 // without knowing the underlying protocol.
 type adapterCoreProvider struct {
-	adapter  format.ProviderAdapter
-	client   provider.ProviderClient
-	finalize func(ctx context.Context, upstream any) (any, error)
+	adapter     format.ProviderAdapter
+	client      provider.ProviderClient
+	finalize    func(ctx context.Context, upstream any) (any, error)
+	providerKey string
 }
 
-func newAdapterCoreProvider(adapter format.ProviderAdapter, client provider.ProviderClient) *adapterCoreProvider {
-	return &adapterCoreProvider{adapter: adapter, client: client}
+func newAdapterCoreProvider(adapter format.ProviderAdapter, client provider.ProviderClient, providerKey string) *adapterCoreProvider {
+	return &adapterCoreProvider{adapter: adapter, client: client, providerKey: providerKey}
 }
 
 func newFinalizingAdapterCoreProvider(
 	adapter format.ProviderAdapter,
 	client provider.ProviderClient,
 	finalize func(ctx context.Context, upstream any) (any, error),
+	providerKey string,
 ) *adapterCoreProvider {
-	return &adapterCoreProvider{adapter: adapter, client: client, finalize: finalize}
+	return &adapterCoreProvider{adapter: adapter, client: client, finalize: finalize, providerKey: providerKey}
 }
 
 func (p *adapterCoreProvider) CreateCore(ctx context.Context, req *format.CoreRequest) (*format.CoreResponse, error) {
+	// Tell the adapter which provider it is converting for: the chat adapter
+	// gates the reasoning_content echo on this (DeepSeek requires it, others 422).
+	if req.Extensions == nil {
+		req.Extensions = make(map[string]any)
+	}
+	req.Extensions["provider_key"] = p.providerKey
+
 	upstreamAny, err := p.adapter.FromCoreRequest(ctx, req)
 	if err != nil {
 		return nil, err
@@ -2398,7 +2414,7 @@ func (s *Server) wrapWithVisual(
 	}
 
 	// Upstream CoreProvider = adapter + client.
-	upstreamCP := newFinalizingAdapterCoreProvider(providerAdapter, effectiveClient, finalizeUpstream)
+	upstreamCP := newFinalizingAdapterCoreProvider(providerAdapter, effectiveClient, finalizeUpstream, preferred.ProviderKey)
 
 	// Visual provider CoreProvider.
 	visProtocol := pm.ProtocolForKey(visCfg.Provider)
@@ -2448,7 +2464,7 @@ func (s *Server) wrapWithVisual(
 		}
 		visClient = c
 	}
-	visCP := newAdapterCoreProvider(visAdapter, visClient)
+	visCP := newAdapterCoreProvider(visAdapter, visClient, visCfg.Provider)
 
 	return visualpkg.NewCoreBridge(upstreamCP, visCP, visCfg.Model, visCfg.MaxRounds, visCfg.MaxTokens)
 }

@@ -155,7 +155,26 @@ func (a *ChatProviderAdapter) FromCoreRequest(ctx context.Context, req *format.C
 		chatReq.ReasoningEffort = effort
 	}
 
+	// Providers other than DeepSeek reject reasoning_content on input messages
+	// (Mistral: 422 extra_forbidden). Only DeepSeek requires the echo, so for any
+	// other provider strip it from assistant messages. Absent provider key keeps
+	// current behavior.
+	if pk, ok := req.Extensions["provider_key"].(string); ok && pk != "deepseek" {
+		stripAssistantReasoningEcho(chatReq.Messages)
+	}
+
 	return chatReq, nil
+}
+
+// stripAssistantReasoningEcho removes reasoning_content from assistant
+// messages (see FromCoreRequest for why).
+func stripAssistantReasoningEcho(msgs []ChatMessage) {
+	for i := range msgs {
+		if msgs[i].Role == "assistant" {
+			msgs[i].ReasoningContent = ""
+			msgs[i].EmitEmptyReasoningContent = false
+		}
+	}
 }
 
 // extractReasoningEffort pulls the reasoning effort string out of the OpenAI

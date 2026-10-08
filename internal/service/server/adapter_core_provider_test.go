@@ -155,7 +155,7 @@ func (c *fakeStrictAnthropicClient) StreamMessage(context.Context, any) (<-chan 
 
 func TestAdapterCoreProviderDereferencesAnthropicRequestAndResponse(t *testing.T) {
 	client := &fakeStrictAnthropicClient{}
-	provider := newAdapterCoreProvider(fakeAnthropicAdapter{}, client)
+	provider := newAdapterCoreProvider(fakeAnthropicAdapter{}, client, "test")
 
 	resp, err := provider.CreateCore(context.Background(), &format.CoreRequest{
 		Model: "claude-test",
@@ -213,7 +213,7 @@ func (c *fakeOpenAIResponseClient) StreamMessage(context.Context, any) (<-chan a
 
 func TestAdapterCoreProviderLeavesNonAnthropicPayloadsUnchanged(t *testing.T) {
 	client := &fakeOpenAIResponseClient{}
-	provider := newAdapterCoreProvider(fakeOpenAIResponseAdapter{}, client)
+	provider := newAdapterCoreProvider(fakeOpenAIResponseAdapter{}, client, "test")
 
 	resp, err := provider.CreateCore(context.Background(), &format.CoreRequest{Model: "gpt-test"})
 	if err != nil {
@@ -276,7 +276,7 @@ func TestAdapterCoreProviderPrependsDeepSeekThinkingBeforeAnthropicUpstream(t *t
 			}
 			prependCachedThinking(&msgReq, sess)
 			return &msgReq, nil
-		})
+		}, "test")
 
 	_, err := provider.CreateCore(context.Background(), &format.CoreRequest{Model: "deepseek-v4-pro"})
 	if err != nil {
