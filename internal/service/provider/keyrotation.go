@@ -83,6 +83,14 @@ func (pm *ProviderManager) advanceKeyIndex(providerKey string, from, to int) boo
 	return true
 }
 
+// AdvanceKeyIndex is the exported form of the CAS advance: it moves the
+// active API-key index for providerKey from -> to (persisted
+// asynchronously, best-effort) and is used by cross-package call sites
+// such as the raw OpenAI Responses passthrough rotation loop.
+func (pm *ProviderManager) AdvanceKeyIndex(providerKey string, from, to int) bool {
+	return pm.advanceKeyIndex(providerKey, from, to)
+}
+
 // runWithRotation executes attempt once per API key of the provider,
 // starting at the active index in rotation order [active, active+1, …,
 // n-1, 0, …, active-1] (at most n attempts). Only rotatable errors — typed
