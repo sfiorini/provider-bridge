@@ -405,6 +405,27 @@ func TestChatClientsUseManagerHTTPClient(t *testing.T) {
 	}
 }
 
+// TestChatAPIKeyFailsClosedWithoutManager checks that chatAPIKey never
+// falls back to the raw provider-def APIKey string (which may be a
+// comma-separated list): without a usable manager key it returns "".
+func TestChatAPIKeyFailsClosedWithoutManager(t *testing.T) {
+	cfg := config.Config{
+		Mode: config.ModeTransform,
+		ProviderDefs: map[string]config.ProviderDef{
+			"main": {
+				BaseURL:  "http://upstream.test",
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIChat,
+				Models:   map[string]config.ModelMeta{"m": {}},
+			},
+		},
+	}
+	srv := New(Config{Runtime: runtime.NewRuntime(cfg, nil, nil)})
+	if k := srv.chatAPIKey("main"); k != "" {
+		t.Fatalf("chatAPIKey(main) = %q, want empty (fail closed, never the raw list)", k)
+	}
+}
+
 // keyRecorder records upstream API keys in arrival order (thread-safe).
 type keyRecorder struct {
 	mu   sync.Mutex

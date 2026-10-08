@@ -172,11 +172,9 @@ func (s *Server) chatAPIKey(providerKey string) string {
 			return k
 		}
 	}
-	if snap := s.runtimeSnapshot(); snap != nil {
-		if def, ok := snap.Config.ProviderDefs[providerKey]; ok {
-			return def.APIKey
-		}
-	}
+	// No usable manager key: fail closed. The raw def.APIKey may be a
+	// comma-separated list, and putting it into an Authorization header
+	// would leak every key.
 	return ""
 }
 
