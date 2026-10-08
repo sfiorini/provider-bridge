@@ -449,10 +449,13 @@ List endpoints that return a page use the envelope
 | PUT | `/providers/{key}` | Create a provider (stages a change) |
 | PATCH | `/providers/{key}` | Update a provider (stages a change) |
 | DELETE | `/providers/{key}` | Delete a provider (stages a change) |
-| POST | `/providers/{key}/test` | Connectivity probe (5s timeout) |
+| POST | `/providers/{key}/test` | Connectivity probe using the provider's active key (5s timeout) |
 
 `PUT`/`PATCH` body: `base_url`, `api_key`, `version`, `protocol`,
-`user_agent`. `protocol` defaults to `anthropic` on create. A masked
+`user_agent`. `protocol` defaults to `anthropic` on create. `api_key` accepts
+multiple keys separated by commas (the bridge rotates on HTTP 429/402 — see
+[CONFIGURATION.md](CONFIGURATION.md#multiple-api-keys-accounts-per-provider));
+the whole value is masked in reads. A masked
 `api_key` (`******`) on `PATCH` keeps the existing key. These handlers stage a
 change and return `202 {"change_id":...,"status":"pending"}`; apply with
 `POST /changes/apply`.

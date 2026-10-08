@@ -21,6 +21,7 @@
 | 6 | [Turn on web search](#6-turn-on-web-search) | 5 min | ⭐⭐ |
 | 7 | [Enable the prompt cache](#7-enable-the-prompt-cache) | 2 min | ⭐ |
 | 8 | [Troubleshooting quick reference](#8-troubleshooting-quick-reference) | — | — |
+| 9 | [Add a second API key (account) for rate-limit headroom](#9-add-a-second-api-key-account-for-rate-limit-headroom) | 3 min | ⭐ |
 
 ---
 
@@ -586,6 +587,51 @@ means the model name is wrong.
 - Does the provider named in `extensions.visual.config.provider` exist?
 - Does the vision provider speak the Anthropic protocol?
 - Is `visual.enabled: true` set on the main model?
+
+---
+
+## 9. Add a second API key (account) for rate-limit headroom
+
+**Goal:** survive rate limits (HTTP 429) or exhausted quota (HTTP 402)
+without restarting or editing config under load — the bridge retries the same
+request with your next key automatically.
+
+**Ingredients:** recipe 1 working, plus a second API key (account) for the
+same provider.
+
+**Steps:**
+
+List your keys comma-separated in the provider's `api_key` — the first key is
+the one used by default:
+
+```yaml
+providers:
+  deepseek:
+    protocol: "anthropic"
+    base_url: "https://api.deepseek.com/anthropic"
+    api_key: "sk-first-key,sk-second-key"
+    version: "2023-06-01"
+    offers:
+      - model: deepseek-v4-pro
+```
+
+Restart the bridge, or apply the change through the management API / web
+console (`api_key` is hot-reloadable).
+
+**Verify:** send a normal chat request — it succeeds with the first key. The
+active key is tracked in the `key_rotation` table of the config-graph database
+(`data/provider-bridge.db`) and survives restarts. To watch a rotation happen,
+rate-limit or exhaust the first key (429/402) and repeat the request: the
+bridge retries immediately with the next key and logs
+`upstream key rotation: retrying with next API key`.
+
+**When it fails:**
+
+- *Still 429/402 with several keys* — every key is limited; the bridge
+  returns the active key's error exactly as a single-key setup would.
+- *A key stopped being used* — check the value is one comma-separated string
+  (not a YAML list); segments are trimmed and empty segments are dropped.
+- *Console "Test provider" fails* — the probe uses the active (first) key.
 
 ---
 

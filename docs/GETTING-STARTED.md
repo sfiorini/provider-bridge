@@ -72,7 +72,7 @@ providers:
   deepseek:
     protocol: "anthropic"
     base_url: "https://api.deepseek.com/anthropic"
-    api_key: "sk-your-api-key"
+    api_key: "sk-your-api-key"   # comma-separate more keys to rotate on 429/402
     version: "2023-06-01"
     offers:
       - model: deepseek-v4-pro

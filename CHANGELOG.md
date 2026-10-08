@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation: the multi-key `api_key` rotation (comma-separated keys,
+  429/402 rotation, persisted active key) is now documented in
+  `docs/CONFIGURATION.md`, `docs/COOKBOOK.md` (new recipe 9),
+  `docs/API.md`, `docs/GETTING-STARTED.md`, `README.md`, and the web console's
+  `api_key` field description.
+
 ## [0.2.1] - 2026-10-08
 
 ### Fixed
