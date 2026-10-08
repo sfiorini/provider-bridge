@@ -283,12 +283,34 @@ func (pm *ProviderManager) Reload(cfg config.ProviderConfig) error {
 	// Atomically replace fields under lock.
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+	// Preserve key rotation state across reloads: the store pointer moves to
+	// the new manager; the active index survives when the new key list still
+	// has that index, otherwise it clamps to the last key.
+	newPM.keyRotationStore = pm.keyRotationStore
+	for key, idx := range pm.activeIdx {
+		n := len(newPM.apiKeys[key])
+		if n == 0 {
+			continue
+		}
+		if idx >= n {
+			idx = n - 1
+		}
+		if idx < 0 {
+			idx = 0
+		}
+		newPM.activeIdx[key] = idx
+	}
 	pm.clients = newPM.clients
 	pm.providers = newPM.providers
 	pm.routes = newPM.routes
 	pm.defaultK = newPM.defaultK
 	pm.resolvedWS = newPM.resolvedWS
 	pm.modelProviders = newPM.modelProviders
+	pm.apiKeys = newPM.apiKeys
+	pm.httpClients = newPM.httpClients
+	pm.activeIdx = newPM.activeIdx
+	pm.keyClientPools = newPM.keyClientPools
+	pm.keyRotationStore = newPM.keyRotationStore
 	return nil
 }
 

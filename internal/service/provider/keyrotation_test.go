@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"providerbridge/internal/config"
 )
 
 func TestAnthropicClientIndexPool(t *testing.T) {
@@ -143,6 +145,45 @@ func TestAdvanceKeyIndexCAS(t *testing.T) {
 	}
 	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
 		t.Fatalf("ActiveKeyIndex(p) = %d, want 1 (unchanged by failed CAS)", idx)
+	}
+}
+
+func TestReloadKeepsRotation(t *testing.T) {
+	newCfg := func(apiKey string) config.ProviderConfig {
+		return config.ProviderConfig{
+			Providers: map[string]config.ProviderDef{
+				"p": {BaseURL: "https://p.example", APIKey: apiKey},
+			},
+		}
+	}
+
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2,k3"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	if !pm.advanceKeyIndex("p", 0, 2) {
+		t.Fatal("advanceKeyIndex(p,0,2) = false, want true")
+	}
+
+	// Reload with a SHORTER key list: index 2 clamps to len-1 = 1.
+	if err := pm.Reload(newCfg("k1,k2")); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) after shrink reload = %d, want 1 (clamped)", idx)
+	}
+
+	// Advance back to 2 within the 3-key list, reload unchanged: index survives.
+	if !pm.advanceKeyIndex("p", 1, 2) {
+		t.Fatal("advanceKeyIndex(p,1,2) = false, want true")
+	}
+	if err := pm.Reload(newCfg("k1,k2,k3")); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 2 {
+		t.Fatalf("ActiveKeyIndex(p) after unchanged reload = %d, want 2", idx)
 	}
 }
 
