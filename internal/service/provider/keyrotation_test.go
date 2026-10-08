@@ -667,3 +667,51 @@ func TestAsAnthropicUpstream(t *testing.T) {
 		t.Fatal("AsAnthropicUpstream(unknown type) = nil error, want error")
 	}
 }
+
+// TestSetKeyRotationStoreAfterReload (S-5-2): the manager reloads (as runtime
+// does after a config change) BEFORE the rotation store is attached; the
+// store then loads the persisted index, and a later advance persists the
+// (provider, index) pair to the fake store.
+func TestSetKeyRotationStoreAfterReload(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2,k3"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+
+	// Reload the manager as runtime does after a config change.
+	if err := pm.Reload(config.ProviderConfig{
+		Providers: map[string]config.ProviderDef{
+			"p": {BaseURL: "https://p.example", APIKey: "k1,k2,k3"},
+		},
+	}); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+
+	fake := &fakeRotationStore{loaded: map[string]int{"p": 1}}
+	pm.SetKeyRotationStore(fake)
+	if idx := pm.ActiveKeyIndex("p"); idx != 1 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 1 (loaded from store after reload)", idx)
+	}
+
+	// Advance: the fake store must record the (provider, index) pair.
+	if !pm.advanceKeyIndex("p", 1, 2) {
+		t.Fatal("advanceKeyIndex(p,1,2) = false, want true")
+	}
+	got := false
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		for _, c := range fake.recorded() {
+			if c == "p:2" {
+				got = true
+			}
+		}
+		if got {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !got {
+		t.Fatalf("fake store never received (p,2); calls = %v", fake.recorded())
+	}
+}

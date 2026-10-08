@@ -837,3 +837,51 @@ func TestKeyRotationStoreRoundTrip(t *testing.T) {
 		t.Fatalf("LoadProviderKeyIndexes() after overwrite[\"p\"] = %d (ok=%v), want 0", v, ok)
 	}
 }
+
+// TestRotationPersistRoundTrip (S-5-2) walks the full persistence sequence a
+// running bridge performs across a restart boundary: set the index, persist
+// the config, verify; then overwrite the index (last-writer-wins, back to 0),
+// persist the config again, and verify the overwrite survived the save.
+func TestRotationPersistRoundTrip(t *testing.T) {
+	logger := testLogger(t)
+	c := store.NewConfigStoreConsumer(logger)
+	ts := newTestStore(t, "config_store", c.Tables())
+	if err := c.BindStore(ts); err != nil {
+		t.Fatalf("BindStore() error = %v", err)
+	}
+	cs := c.Store()
+	ctx := context.Background()
+
+	// First write: index 1 survives a config save.
+	if err := cs.SetProviderKeyIndex(ctx, "p", 1); err != nil {
+		t.Fatalf("SetProviderKeyIndex() error = %v", err)
+	}
+	if _, err := cs.SaveConfig(ctx, buildTestConfig()); err != nil {
+		t.Fatalf("SaveConfig() error = %v", err)
+	}
+	idx, err := cs.LoadProviderKeyIndexes(ctx)
+	if err != nil {
+		t.Fatalf("LoadProviderKeyIndexes() error = %v", err)
+	}
+	if v, ok := idx["p"]; !ok || v != 1 {
+		t.Fatalf("LoadProviderKeyIndexes()[\"p\"] = %d (ok=%v), want 1 after first save", v, ok)
+	}
+
+	// Second write: last-writer-wins overwrite back to 0, again across a save.
+	if err := cs.SetProviderKeyIndex(ctx, "p", 0); err != nil {
+		t.Fatalf("SetProviderKeyIndex() overwrite error = %v", err)
+	}
+	if _, err := cs.SaveConfig(ctx, buildTestConfig()); err != nil {
+		t.Fatalf("SaveConfig() after overwrite error = %v", err)
+	}
+	idx, err = cs.LoadProviderKeyIndexes(ctx)
+	if err != nil {
+		t.Fatalf("LoadProviderKeyIndexes() after overwrite save error = %v", err)
+	}
+	if len(idx) != 1 {
+		t.Fatalf("LoadProviderKeyIndexes() = %v, want exactly 1 entry", idx)
+	}
+	if v, ok := idx["p"]; !ok || v != 0 {
+		t.Fatalf("LoadProviderKeyIndexes() after overwrite save[\"p\"] = %d (ok=%v), want 0 (last-writer-wins)", v, ok)
+	}
+}
