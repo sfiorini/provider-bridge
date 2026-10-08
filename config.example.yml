@@ -191,6 +191,11 @@ providers:
   deepseek:
     protocol: "anthropic"            # anthropic (default) | openai-response | google-genai | openai-chat
     base_url: "https://api.deepseek.com/anthropic"
+    # api_key may contain MULTIPLE keys separated by commas ("key-a,key-b").
+    # On HTTP 429 (rate limited) or 402 (quota exhausted) the bridge retries
+    # the same request with the next key, starting from the active key, and
+    # remembers the advanced key across restarts. Single-key values behave
+    # exactly as before.
     api_key: "replace-with-deepseek-api-key"
     version: "2023-06-01"
     user_agent: "provider-bridge/1.0"

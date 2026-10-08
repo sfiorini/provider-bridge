@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"providerbridge/internal/db"
@@ -142,7 +143,7 @@ func TestConsumerBasics(t *testing.T) {
 	}
 
 	tables := c.Tables()
-	expected := []string{"providers", "offers", "models", "routes", "settings", "changes", "schema_migrations"}
+	expected := []string{"providers", "offers", "models", "routes", "settings", "key_rotation", "changes", "schema_migrations"}
 	if len(tables) != len(expected) {
 		t.Fatalf("Tables() returned %d tables, want %d", len(tables), len(expected))
 	}
@@ -154,6 +155,21 @@ func TestConsumerBasics(t *testing.T) {
 		if !seen[name] {
 			t.Fatalf("missing table %q", name)
 		}
+	}
+
+	// The key_rotation table must persist the active key index outside the
+	// settings table (replaceConfigTx wipes settings on every SaveConfig).
+	found := false
+	for _, tbl := range tables {
+		if tbl.Name == "key_rotation" {
+			if !strings.Contains(tbl.Schema, "active_index INTEGER NOT NULL DEFAULT 0") {
+				t.Fatalf("key_rotation schema missing active_index column: %q", tbl.Schema)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("Tables() must include a key_rotation table")
 	}
 
 	// Validate.

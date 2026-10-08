@@ -98,6 +98,14 @@ func (c *ConfigStoreConsumer) Tables() []db.TableSpec {
 )`,
 		},
 		{
+			Name: "key_rotation",
+			Schema: `CREATE TABLE IF NOT EXISTS {{table}} (
+    provider_key TEXT PRIMARY KEY,
+    active_index INTEGER NOT NULL DEFAULT 0,
+    updated_at   TEXT
+)`,
+		},
+		{
 			Name: "changes",
 			Schema: `CREATE TABLE IF NOT EXISTS {{table}} (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

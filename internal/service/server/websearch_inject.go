@@ -13,6 +13,7 @@ import (
 	"providerbridge/internal/protocol/chat"
 	"providerbridge/internal/protocol/google"
 	openai "providerbridge/internal/protocol/openai"
+	"providerbridge/internal/service/provider"
 )
 
 // ============================================================================
@@ -259,9 +260,13 @@ func injectChatSearchTools(req *chat.ChatRequest, firecrawlKey string) {
 }
 
 // executeChatSearchLoop implements the multi-round search loop for Chat protocol.
+// The per-round upstream call goes through the ChatCaller: for multi-key
+// providers it is the rotating chat client, so a 429/402 on one round retries
+// the SAME round with the next key. providerKey is log/context-only.
 func (s *Server) executeChatSearchLoop(
 	ctx context.Context,
-	client *chat.Client,
+	providerKey string,
+	caller provider.ChatCaller,
 	req *chat.ChatRequest,
 	tavilyKey, firecrawlKey string,
 	maxRounds int,
@@ -274,7 +279,7 @@ func (s *Server) executeChatSearchLoop(
 	}
 
 	for round := 0; round < maxRounds; round++ {
-		resp, err := client.CreateChat(ctx, req)
+		resp, err := caller.CreateChat(ctx, req)
 		if err != nil {
 			return nil, err
 		}
@@ -673,9 +678,14 @@ func executeGoogleSearchCall(
 // ChatStreamChunk events, detecting search tool calls, executing them, and
 // continuing the conversation until no more search tools are called.
 // Returns a channel that replays all events from all rounds as a single stream.
+// The per-round upstream call goes through the ChatCaller: for multi-key
+// providers it is the rotating chat client, so a 429/402 on one round retries
+// the SAME round with the next key. providerKey is log/context-only
+// (rotation state lives inside the caller).
 func (s *Server) chatSearchBufferedStream(
 	ctx context.Context,
-	client *chat.Client,
+	providerKey string,
+	caller provider.ChatCaller,
 	req *chat.ChatRequest,
 	tavilyKey, firecrawlKey string,
 	maxRounds int,
@@ -690,7 +700,7 @@ func (s *Server) chatSearchBufferedStream(
 	allEvents := make([]chat.ChatStreamChunk, 0, 128)
 	exhausted := true
 	for round := 0; round < maxRounds; round++ {
-		stream, err := client.StreamChat(ctx, req)
+		stream, err := caller.StreamChat(ctx, req)
 		if err != nil {
 			return nil, err
 		}

@@ -294,9 +294,9 @@ func (s *Server) handleWithAdapters(
 
 		// Wrap provider with search orchestrator if web search is "injected".
 		if wsInjected {
-			if acc, ok := effectiveProvider.(provider.AnthropicClientAccessor); ok {
+			if typedClient, terr := provider.AsAnthropicUpstream(effectiveProvider); terr == nil {
 				wrapped := websearchinjected.WrapProvider(
-					acc.AnthropicClient(),
+					typedClient,
 					searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds, s.proxyHTTP,
 				)
 				effectiveProvider = &searchProviderAdapter{wrapped: wrapped}
@@ -325,18 +325,43 @@ func (s *Server) handleWithAdapters(
 				upstreamReq = &strippedReq
 			}
 			var upstreamRespMsg anthropic.MessageResponse
-			var rawResp any
-			rawResp, err = effectiveProvider.CreateMessage(ctx, *upstreamReq)
-			if err == nil {
-				var okt bool
-				upstreamRespMsg, okt = rawResp.(anthropic.MessageResponse)
-				if !okt {
-					err = fmt.Errorf("unexpected anthropic response type %T", rawResp)
-				} else {
-					// Normal path: convert back to CoreResponse.
-					msgResp := upstreamRespMsg
-					coreResp, err = providerToCoreResponse(ctx, providerAdapter, coreReq, &msgResp)
+			if !wsInjected {
+				// Typed anthropic call: rotation (if any) happens inside the
+				// rotating client returned by AsAnthropicUpstream.
+				typedClient, terr := provider.AsAnthropicUpstream(effectiveProvider)
+				if terr != nil {
+					log.Error("adapter path: provider does not support anthropic upstream", "provider", preferred.ProviderKey)
+					payload := openai.ErrorResponse{
+						Error: openai.ErrorObject{
+							Message: fmt.Sprintf("provider %q does not support anthropic upstream calls", preferred.ProviderKey),
+							Type:    "server_error",
+							Code:    "internal_error",
+						},
+					}
+					record.Error = traceError("anthropic_upstream", terr)
+					record.OpenAIResponse = payload
+					adapterHookErr = "anthropic_upstream"
+					writeOpenAIError(w, http.StatusInternalServerError, payload)
+					return
 				}
+				upstreamRespMsg, err = typedClient.CreateMessage(ctx, *upstreamReq)
+			} else {
+				// wsInjected: the search orchestrator already holds the rotating
+				// typed client and rotates internally; the adapter returns any.
+				var rawResp any
+				rawResp, err = effectiveProvider.CreateMessage(ctx, *upstreamReq)
+				if err == nil {
+					var okt bool
+					upstreamRespMsg, okt = rawResp.(anthropic.MessageResponse)
+					if !okt {
+						err = fmt.Errorf("unexpected anthropic response type %T", rawResp)
+					}
+				}
+			}
+			if err == nil {
+				// Normal path: convert back to CoreResponse.
+				msgResp := upstreamRespMsg
+				coreResp, err = providerToCoreResponse(ctx, providerAdapter, coreReq, &msgResp)
 			}
 		}
 		if err != nil {
@@ -385,8 +410,8 @@ func (s *Server) handleWithAdapters(
 			return
 		}
 
-		chatClientRaw := s.activeChatClient(preferred.ProviderKey)
-		if chatClientRaw == nil {
+		chatCaller := s.activeChatCaller(preferred.ProviderKey)
+		if chatCaller == nil {
 			log.Error("adapter path: no chat client for provider", "provider", preferred.ProviderKey)
 			payload := openai.ErrorResponse{
 				Error: openai.ErrorObject{
@@ -399,22 +424,6 @@ func (s *Server) handleWithAdapters(
 			record.OpenAIResponse = payload
 			adapterHookErr = "chat_client"
 			writeOpenAIError(w, http.StatusBadGateway, payload)
-			return
-		}
-		chatClient, ok := chatClientRaw.(*chat.Client)
-		if !ok {
-			log.Error("adapter path: invalid chat client type", "provider", preferred.ProviderKey)
-			payload := openai.ErrorResponse{
-				Error: openai.ErrorObject{
-					Message: fmt.Sprintf("invalid chat client for provider %q", preferred.ProviderKey),
-					Type:    "server_error",
-					Code:    "internal_error",
-				},
-			}
-			record.Error = traceError("chat_client_type", fmt.Errorf("invalid chat client for %q", preferred.ProviderKey))
-			record.OpenAIResponse = payload
-			adapterHookErr = "chat_client_type"
-			writeOpenAIError(w, http.StatusInternalServerError, payload)
 			return
 		}
 
@@ -447,7 +456,7 @@ func (s *Server) handleWithAdapters(
 		// real chat client so the orchestrator's per-round upstream calls hit
 		// the chat-protocol endpoint instead.
 		visualCandidate := preferred
-		visualCandidate.Client = &chatProviderClient{c: chatClient}
+		visualCandidate.Client = &chatProviderClient{c: chatCaller}
 		if needsAssist {
 			if visProv := s.wrapWithVisual(ctx, openAIReq.Model, visualCandidate, providerAdapter, finalizeChatUpstream); visProv != nil {
 				visRan = true
@@ -501,9 +510,9 @@ func (s *Server) handleWithAdapters(
 
 		var chatResp *chat.ChatResponse
 		if wsInjected {
-			chatResp, err = s.executeChatSearchLoop(ctx, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+			chatResp, err = s.executeChatSearchLoop(ctx, preferred.ProviderKey, chatCaller, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 		} else {
-			chatResp, err = chatClient.CreateChat(ctx, chatReq)
+			chatResp, err = chatCaller.CreateChat(ctx, chatReq)
 		}
 		if err != nil {
 			log.Error("adapter path: Chat API call failed", "error", err)
@@ -1100,10 +1109,11 @@ func (s *Server) handleAdapterStream(
 		}
 
 		// StreamMessage on ProviderClient returns <-chan any, losing the concrete type.
-		// Get the inner anthropic.Client directly so ToCoreStream receives anthropic.Stream.
-		acc, ok := effectiveProvider.(provider.AnthropicClientAccessor)
-		if !ok {
-			log.Error("adapter stream: provider does not support AnthropicClientAccessor", "provider", candidate.ProviderKey)
+		// Get the typed anthropic client (rotating for multi-key providers) so
+		// ToCoreStream receives anthropic.Stream and calls rotate on 429/402.
+		typedClient, terr := provider.AsAnthropicUpstream(effectiveProvider)
+		if terr != nil {
+			log.Error("adapter stream: provider does not support anthropic streaming", "provider", candidate.ProviderKey)
 			payload := openai.ErrorResponse{
 				Error: openai.ErrorObject{
 					Message: "provider does not support anthropic streaming",
@@ -1111,7 +1121,7 @@ func (s *Server) handleAdapterStream(
 					Code:    "provider_error",
 				},
 			}
-			streamRecord.Error = traceError("stream_accessor", fmt.Errorf("provider %q not AnthropicClientAccessor", candidate.ProviderKey))
+			streamRecord.Error = traceError("stream_accessor", fmt.Errorf("provider %q does not support anthropic streaming", candidate.ProviderKey))
 			streamRecord.OpenAIResponse = payload
 			writeOpenAIError(w, http.StatusInternalServerError, payload)
 			return
@@ -1143,7 +1153,7 @@ func (s *Server) handleAdapterStream(
 			}
 			coreEvents = coreResponseToCoreStream(ctx, coreResp)
 		} else {
-			stream, err := acc.AnthropicClient().StreamMessage(ctx, *anthReq)
+			stream, err := typedClient.StreamMessage(ctx, *anthReq)
 			if err != nil {
 				log.Error("adapter stream: StreamMessage failed", "error", err)
 				payload := openai.ErrorResponse{
@@ -1226,8 +1236,8 @@ func (s *Server) handleAdapterStream(
 			prependCachedReasoningForChat(chatReq, sess, candidate.ProviderKey == "deepseek")
 		}
 
-		chatClientRaw := s.activeChatClient(candidate.ProviderKey)
-		if chatClientRaw == nil {
+		chatCaller := s.activeChatCaller(candidate.ProviderKey)
+		if chatCaller == nil {
 			log.Error("adapter stream: no chat client", "provider", candidate.ProviderKey)
 			payload := openai.ErrorResponse{
 				Error: openai.ErrorObject{
@@ -1239,21 +1249,6 @@ func (s *Server) handleAdapterStream(
 			streamRecord.Error = traceError("stream_chat_client", fmt.Errorf("no chat client for %q", candidate.ProviderKey))
 			streamRecord.OpenAIResponse = payload
 			writeOpenAIError(w, http.StatusBadGateway, payload)
-			return
-		}
-		chatClient, ok := chatClientRaw.(*chat.Client)
-		if !ok {
-			log.Error("adapter stream: invalid chat client type", "provider", candidate.ProviderKey)
-			payload := openai.ErrorResponse{
-				Error: openai.ErrorObject{
-					Message: fmt.Sprintf("invalid chat client for provider %q", candidate.ProviderKey),
-					Type:    "server_error",
-					Code:    "internal_error",
-				},
-			}
-			streamRecord.Error = traceError("stream_chat_client_type", fmt.Errorf("invalid chat client for %q", candidate.ProviderKey))
-			streamRecord.OpenAIResponse = payload
-			writeOpenAIError(w, http.StatusInternalServerError, payload)
 			return
 		}
 
@@ -1283,7 +1278,7 @@ func (s *Server) handleAdapterStream(
 					return req, nil
 				}
 				visCandidate := candidate
-				visCandidate.Client = &chatProviderClient{c: chatClient}
+				visCandidate.Client = &chatProviderClient{c: chatCaller}
 				if visProv := s.wrapWithVisual(ctx, openAIReq.Model, visCandidate, providerAdapter, finalizeUpstream); visProv != nil {
 					visRan = true
 					coreResp, visErr := visProv.CreateCore(ctx, coreReq)
@@ -1336,9 +1331,9 @@ func (s *Server) handleAdapterStream(
 
 		if wsInjected {
 			searchCfg := s.resolvedSearchConfig(candidate.ProviderKey, openAIReq.Model)
-			chatStream, err = s.chatSearchBufferedStream(ctx, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+			chatStream, err = s.chatSearchBufferedStream(ctx, candidate.ProviderKey, chatCaller, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 		} else {
-			chatStream, err = chatClient.StreamChat(ctx, chatReq)
+			chatStream, err = chatCaller.StreamChat(ctx, chatReq)
 		}
 		if err != nil {
 			log.Error("adapter stream: StreamChat failed", "error", err)
@@ -2458,7 +2453,8 @@ func (s *Server) wrapWithVisual(
 	return visualpkg.NewCoreBridge(upstreamCP, visCP, visCfg.Model, visCfg.MaxRounds, visCfg.MaxTokens)
 }
 
-// chatProviderClient adapts *chat.Client to provider.ProviderClient so the
+// chatProviderClient adapts a provider.ChatCaller (a plain *chat.Client or
+// the rotating chat client) to provider.ProviderClient so the
 // adapter-based CoreProvider machinery (used by the visual orchestrator) can
 // drive a chat-protocol upstream uniformly across protocols.
 //
@@ -2488,7 +2484,7 @@ func (p *googleProviderClient) StreamMessage(ctx context.Context, req any) (<-ch
 	return nil, fmt.Errorf("googleProviderClient: streaming not supported via ProviderClient interface")
 }
 
-type chatProviderClient struct{ c *chat.Client }
+type chatProviderClient struct{ c provider.ChatCaller }
 
 func (p *chatProviderClient) CreateMessage(ctx context.Context, req any) (any, error) {
 	chatReq, ok := req.(*chat.ChatRequest)

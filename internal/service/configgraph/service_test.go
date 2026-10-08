@@ -47,6 +47,20 @@ func TestBuildGraphMasksSecrets(t *testing.T) {
 	}
 }
 
+func TestBuildGraphMasksCommaAPIKey(t *testing.T) {
+	// S-5-3: a comma-separated key list is a single secret value; the graph
+	// GET must mask the whole value, not per-comma-segment.
+	cfg := testConfig()
+	anthropic := cfg.ProviderDefs["anthropic"]
+	anthropic.APIKey = "k1,k2"
+	cfg.ProviderDefs["anthropic"] = anthropic
+
+	provider := assertResource(t, BuildGraph(cfg, "rev-1"), ResourceProvider, "anthropic")
+	if got, want := provider.Value["api_key"], "******"; got != want {
+		t.Fatalf("provider api_key = %v, want %q (whole-value mask for comma key)", provider.Value["api_key"], want)
+	}
+}
+
 func TestBuildGraphReportsRevisionAndCapabilities(t *testing.T) {
 	graph := BuildGraph(testConfig(), "rev-1")
 	if graph.Revision != "rev-1" {

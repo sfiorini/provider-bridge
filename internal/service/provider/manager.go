@@ -143,6 +143,12 @@ type ProviderManager struct {
 	defaultK       string                          // default provider key
 	resolvedWS     map[string]string               // provider key -> resolved web search support
 	modelProviders map[string][]modelProviderEntry // upstream model name -> (provider key, priority) (reverse index)
+
+	apiKeys          map[string][]string                  // provider key -> parsed API keys (len>1 => rotation)
+	httpClients      map[string]*http.Client              // provider key -> shared HTTP client (override or pool)
+	activeIdx        map[string]int                       // provider key -> active key index (guarded by mu)
+	keyClientPools   map[string]map[int]*anthropic.Client // provider key -> idx -> lazy typed client (guarded by mu)
+	keyRotationStore KeyRotationStore
 }
 
 // NewProviderManager creates a ProviderManager from provider configs and model routes.
@@ -150,10 +156,14 @@ type ProviderManager struct {
 // routes: model alias -> ModelRoute
 func NewProviderManager(providerCfgs map[string]ProviderConfig, routes map[string]ModelRoute) (*ProviderManager, error) {
 	pm := &ProviderManager{
-		clients:    make(map[string]ProviderClient, len(providerCfgs)),
-		providers:  providerCfgs,
-		routes:     routes,
-		resolvedWS: make(map[string]string, len(providerCfgs)),
+		clients:        make(map[string]ProviderClient, len(providerCfgs)),
+		providers:      providerCfgs,
+		routes:         routes,
+		resolvedWS:     make(map[string]string, len(providerCfgs)),
+		apiKeys:        make(map[string][]string, len(providerCfgs)),
+		httpClients:    make(map[string]*http.Client, len(providerCfgs)),
+		activeIdx:      make(map[string]int, len(providerCfgs)),
+		keyClientPools: make(map[string]map[int]*anthropic.Client, len(providerCfgs)),
 	}
 
 	// Build clients for each provider config.
@@ -165,13 +175,26 @@ func NewProviderManager(providerCfgs map[string]ProviderConfig, routes map[strin
 		if httpClient == nil {
 			httpClient = newHTTPClient(cfg.HTTP)
 		}
-		pm.clients[key] = &anthropicClientAdapter{client: anthropic.NewClient(anthropic.ClientConfig{
-			BaseURL:   cfg.BaseURL,
-			APIKey:    cfg.APIKey,
-			Version:   cfg.Version,
-			UserAgent: cfg.UserAgent,
-			Client:    httpClient,
-		})}
+		keys := config.SplitAPIKeys(cfg.APIKey)
+		if len(keys) == 0 {
+			return nil, fmt.Errorf("provider %q: api_key is required", key)
+		}
+		pm.apiKeys[key] = keys
+		pm.httpClients[key] = httpClient
+		if len(keys) > 1 {
+			pm.clients[key] = &rotatingProviderClient{typed: &rotatingAnthropicClient{pm: pm, providerKey: key}}
+		} else {
+			// Use the parsed key, not the raw config string: SplitAPIKeys
+			// trims surrounding whitespace, so this matches the key the
+			// chat/dispatch paths send via ProviderAPIKey.
+			pm.clients[key] = &anthropicClientAdapter{client: anthropic.NewClient(anthropic.ClientConfig{
+				BaseURL:   cfg.BaseURL,
+				APIKey:    keys[0],
+				Version:   cfg.Version,
+				UserAgent: cfg.UserAgent,
+				Client:    httpClient,
+			})}
+		}
 	}
 
 	// Pick the default key.
@@ -267,12 +290,33 @@ func (pm *ProviderManager) Reload(cfg config.ProviderConfig) error {
 	// Atomically replace fields under lock.
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+	// Preserve key rotation state across reloads: the store pointer moves to
+	// the new manager; the active index survives when the new key list still
+	// has that index. Out-of-range indexes clamp to 0 — the same rule
+	// SetKeyRotationStore applies to a persisted index at restart, keeping
+	// reload and restart behavior identical.
+	newPM.keyRotationStore = pm.keyRotationStore
+	for key, idx := range pm.activeIdx {
+		n := len(newPM.apiKeys[key])
+		if n == 0 {
+			continue
+		}
+		if idx < 0 || idx >= n {
+			idx = 0
+		}
+		newPM.activeIdx[key] = idx
+	}
 	pm.clients = newPM.clients
 	pm.providers = newPM.providers
 	pm.routes = newPM.routes
 	pm.defaultK = newPM.defaultK
 	pm.resolvedWS = newPM.resolvedWS
 	pm.modelProviders = newPM.modelProviders
+	pm.apiKeys = newPM.apiKeys
+	pm.httpClients = newPM.httpClients
+	pm.activeIdx = newPM.activeIdx
+	pm.keyClientPools = newPM.keyClientPools
+	pm.keyRotationStore = newPM.keyRotationStore
 	return nil
 }
 
@@ -473,6 +517,49 @@ func valueOrDefault(value, fallback string) string {
 	return value
 }
 
+// HTTPClient returns the provider's shared proxy-aware HTTP client (the
+// ClientOverride or the pooled client built from the provider's HTTP
+// settings). It returns nil for unknown providers; callers falling back to
+// http.DefaultClient on nil keep their existing behavior.
+func (pm *ProviderManager) HTTPClient(key string) *http.Client {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return pm.httpClients[key]
+}
+
+// AnthropicClientIndex returns the anthropic client for the provider's API
+// key at rotation index idx, building and caching it lazily. All indices
+// share the provider's *http.Client (ClientOverride or pooled client).
+func (pm *ProviderManager) AnthropicClientIndex(key string, idx int) *anthropic.Client {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	cfg, ok := pm.providers[key]
+	if !ok {
+		return nil
+	}
+	pool := pm.keyClientPools[key]
+	if pool == nil {
+		pool = make(map[int]*anthropic.Client)
+		pm.keyClientPools[key] = pool
+	}
+	keys := pm.apiKeys[key]
+	if idx < 0 || idx >= len(keys) {
+		idx = 0
+	}
+	if c, ok := pool[idx]; ok {
+		return c
+	}
+	c := anthropic.NewClient(anthropic.ClientConfig{
+		BaseURL:   cfg.BaseURL,
+		APIKey:    keys[idx],
+		Version:   cfg.Version,
+		UserAgent: cfg.UserAgent,
+		Client:    pm.httpClients[key],
+	})
+	pool[idx] = c
+	return c
+}
+
 // ClientForKey returns the anthropic.Client for a given provider key.
 func (pm *ProviderManager) ClientForKey(key string) (ProviderClient, error) {
 	pm.mu.RLock()
@@ -566,15 +653,55 @@ func (pm *ProviderManager) ProviderBaseURL(key string) string {
 	return cfg.BaseURL
 }
 
-// ProviderAPIKey returns the API key for a given provider key.
+// ProviderAPIKey returns the ACTIVE API key for a given provider key. For
+// multi-key (comma-separated) providers this is the key at the current
+// active rotation index — never the raw comma-separated list, so callers
+// that put this value into Authorization headers can never leak the full list.
 func (pm *ProviderManager) ProviderAPIKey(key string) string {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	cfg, ok := pm.providers[key]
-	if !ok {
+	keys := pm.apiKeys[key]
+	if len(keys) == 0 {
+		// Fail closed: the raw cfg.APIKey may be a comma-separated
+		// list, and returning it here could leak every key into an
+		// Authorization header. No parsed keys means no usable key.
 		return ""
 	}
-	return cfg.APIKey
+	idx := pm.activeIdx[key]
+	if idx < 0 || idx >= len(keys) {
+		idx = 0
+	}
+	return keys[idx]
+}
+
+// ProviderKeyCount returns the number of API keys configured for a provider.
+func (pm *ProviderManager) ProviderKeyCount(key string) int {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	return len(pm.apiKeys[key])
+}
+
+// ProviderAPIKeyIndex returns the API key at the given rotation index
+// ("" when the provider or index is out of range).
+func (pm *ProviderManager) ProviderAPIKeyIndex(key string, idx int) string {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	keys := pm.apiKeys[key]
+	if idx < 0 || idx >= len(keys) {
+		return ""
+	}
+	return keys[idx]
+}
+
+// ActiveKeyIndex returns the active rotation index for a provider (default 0).
+func (pm *ProviderManager) ActiveKeyIndex(key string) int {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	idx, ok := pm.activeIdx[key]
+	if !ok || idx < 0 {
+		return 0
+	}
+	return idx
 }
 
 // ProviderKeyForModel returns the provider key that serves the given model alias.

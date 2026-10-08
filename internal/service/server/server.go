@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +85,42 @@ type Server struct {
 	googleCache   map[string]*google.Client
 	clientCacheMu sync.RWMutex
 	googleCacheMu sync.RWMutex
+	// clientCacheMgr is the manager the caches above were built from
+	// (guarded by clientCacheMu). invalidateClientCacheOnManagerChange
+	// clears the caches whenever the active manager differs.
+	clientCacheMgr *provider.ProviderManager
+}
+
+// invalidateClientCacheOnManagerChange clears the lazily-built client caches
+// whenever the active provider manager changed (e.g. a runtime Reload built
+// a new manager), so a cached client never outlives the manager its API key
+// came from. Safe to call on every cache read; a no-op when the manager is
+// unchanged.
+func (s *Server) invalidateClientCacheOnManagerChange() {
+	pm := s.activeProviderManager()
+	// Fast path: the manager is unchanged on the vast majority of calls
+	// (this runs on every cache read, i.e. every chat request), so a
+	// read lock suffices and the concurrent read path stays lock-free
+	// with respect to other readers.
+	s.clientCacheMu.RLock()
+	if s.clientCacheMgr == pm {
+		s.clientCacheMu.RUnlock()
+		return
+	}
+	s.clientCacheMu.RUnlock()
+	// Slow path: the manager changed — take the write lock and
+	// DOUBLE-CHECK the mismatch before clearing: another goroutine may
+	// have invalidated (and recorded this manager) in the meantime.
+	s.clientCacheMu.Lock()
+	defer s.clientCacheMu.Unlock()
+	if s.clientCacheMgr == pm {
+		return
+	}
+	s.clientCache = make(map[string]*chat.Client)
+	s.clientCacheMgr = pm
+	s.googleCacheMu.Lock()
+	s.googleCache = make(map[string]*google.Client)
+	s.googleCacheMu.Unlock()
 }
 
 func (s *Server) runtimeSnapshot() *runtime.ConfigSnapshot {
@@ -108,6 +145,7 @@ func (s *Server) activeProviderDefs() map[string]config.ProviderDef {
 }
 
 func (s *Server) activeChatClient(providerKey string) any {
+	s.invalidateClientCacheOnManagerChange()
 	// Check runtime-driven cache first.
 	s.clientCacheMu.RLock()
 	if cached, ok := s.clientCache[providerKey]; ok {
@@ -116,23 +154,163 @@ func (s *Server) activeChatClient(providerKey string) any {
 	}
 	s.clientCacheMu.RUnlock()
 
-	if snap := s.runtimeSnapshot(); snap != nil {
-		if def, ok := snap.Config.ProviderDefs[providerKey]; ok && def.Protocol == config.ProtocolOpenAIChat {
-			client := chat.NewClient(chat.ClientConfig{
-				BaseURL:   def.BaseURL,
-				APIKey:    def.APIKey,
-				UserAgent: def.UserAgent,
-			})
-			s.clientCacheMu.Lock()
-			s.clientCache[providerKey] = client
-			s.clientCacheMu.Unlock()
-			return client
+	snap := s.runtimeSnapshot()
+	if snap == nil {
+		return s.chatClients[providerKey]
+	}
+	def, ok := snap.Config.ProviderDefs[providerKey]
+	if !ok || def.Protocol != config.ProtocolOpenAIChat {
+		return s.chatClients[providerKey]
+	}
+	// R6: def, API key, manager, and HTTP client all come from the SAME
+	// snapshot — one consistent point-in-time view. Reading the def here
+	// and the key from a SECOND live snapshot read (as this code once
+	// did) lets a reload land between the reads and build a MISMATCHED
+	// client (old BaseURL + new key) that the cache store below would
+	// then accept (its live-manager check passes), disclosing the new
+	// key to a retired endpoint.
+	mgr := snap.ProviderMgr
+	if mgr == nil {
+		return s.chatClients[providerKey]
+	}
+	// Egress-proxy correctness: route through the manager's
+	// proxy-aware client when one is configured.
+	client := chat.NewClient(chat.ClientConfig{
+		BaseURL:   def.BaseURL,
+		APIKey:    mgr.ProviderAPIKey(providerKey),
+		UserAgent: def.UserAgent,
+		Client:    mgr.HTTPClient(providerKey),
+	})
+	// Cache only while mgr still owns the caches; when a reload swapped
+	// the manager after this snapshot was taken, serve the built client
+	// UNCACHED instead of nil: its key was active when the request
+	// started (Reload preserves the rotation index), and a nil here
+	// surfaces as a spurious 502 "no chat client for provider" under
+	// live reload traffic.
+	s.cacheChatClient(mgr, providerKey, client)
+	return client
+}
+
+// cacheChatClient stores a freshly built chat client in the runtime
+// client cache under cacheKey. mgr is the manager the client was built
+// from — the origin of its API key. The store is atomic with the
+// ownership check under clientCacheMu, and the check compares against
+// the LIVE manager (s.activeProviderManager()), not the recorded
+// s.clientCacheMgr: invalidation only runs on cache READS, so a reload
+// landing between the mgr capture and this store leaves clientCacheMgr
+// equal to the (now retired) mgr. Comparing against the live manager
+// detects any reload in that window and refuses the store, so a
+// retired-manager client never enters the cache — a reader whose own
+// invalidation check already passed pre-reload could otherwise find it.
+// Returns true when the client was cached; the caller serves the built
+// client either way.
+//
+// Residual known race (P3, accepted): this live-manager check and the map
+// store are atomic under clientCacheMu, but NOT with Runtime.Reload's
+// lock-free snapshot swap — a reload landing in the few-instruction
+// window between this check and a later invalidation can serve a
+// pre-reload client for one read cycle. Since R6 every built client is a
+// CONSISTENT (pre-reload key + endpoint) pair derived from a single
+// snapshot, so a client that slips through can never mix generations;
+// the next invalidation self-heals it. Do not restructure the runtime
+// over this.
+func (s *Server) cacheChatClient(mgr *provider.ProviderManager, cacheKey string, client *chat.Client) bool {
+	s.clientCacheMu.Lock()
+	defer s.clientCacheMu.Unlock()
+	if s.activeProviderManager() != mgr {
+		return false
+	}
+	s.clientCache[cacheKey] = client
+	return true
+}
+
+// cacheGoogleClient is the google-genai counterpart of cacheChatClient:
+// the ownership check compares against the LIVE manager (see the
+// cacheChatClient comment for the mid-build reload window it closes),
+// refusing a client whose key came from a retired manager. It acquires
+// clientCacheMu before googleCacheMu — the same order as
+// invalidateClientCacheOnManagerChange — so the ownership check and the
+// store are atomic with respect to invalidation. Returns true when the
+// client was cached; the caller serves the built client either way.
+func (s *Server) cacheGoogleClient(mgr *provider.ProviderManager, providerKey string, client *google.Client) bool {
+	s.clientCacheMu.Lock()
+	defer s.clientCacheMu.Unlock()
+	if s.activeProviderManager() != mgr {
+		return false
+	}
+	s.googleCacheMu.Lock()
+	defer s.googleCacheMu.Unlock()
+	s.googleCache[providerKey] = client
+	return true
+}
+
+// chatClientIndex returns the *chat.Client for the provider's API key at
+// rotation index idx, building and caching it on first use. Cache entries
+// are keyed "<provider>\x00<idx>" in s.clientCache.
+func (s *Server) chatClientIndex(providerKey string, idx int) *chat.Client {
+	s.invalidateClientCacheOnManagerChange()
+	cacheKey := providerKey + "\x00" + strconv.Itoa(idx)
+	s.clientCacheMu.RLock()
+	if cached, ok := s.clientCache[cacheKey]; ok {
+		s.clientCacheMu.RUnlock()
+		return cached
+	}
+	s.clientCacheMu.RUnlock()
+	// R6: key, manager, and def all come from the SAME snapshot; a
+	// second live defs read after the key could pair a pre-reload key
+	// with a post-reload BaseURL. See activeChatClient for the full
+	// mismatch rationale.
+	snap := s.runtimeSnapshot()
+	if snap == nil {
+		return nil
+	}
+	pm := snap.ProviderMgr
+	if pm == nil {
+		return nil
+	}
+	apiKey := pm.ProviderAPIKeyIndex(providerKey, idx)
+	if apiKey == "" {
+		return nil
+	}
+	def, ok := snap.Config.ProviderDefs[providerKey]
+	if !ok || def.Protocol != config.ProtocolOpenAIChat {
+		return nil
+	}
+	client := chat.NewClient(chat.ClientConfig{
+		BaseURL:   def.BaseURL,
+		APIKey:    apiKey,
+		UserAgent: def.UserAgent,
+		// Egress-proxy correctness: route through the manager's
+		// proxy-aware client when one is configured.
+		Client: pm.HTTPClient(providerKey),
+	})
+	// Cache only while pm still owns the caches; serve the built client
+	// uncached when a reload swapped the manager mid-build (its key was
+	// active when this request started — see cacheChatClient).
+	s.cacheChatClient(pm, cacheKey, client)
+	return client
+}
+
+// activeChatCaller returns the ChatCaller for providerKey: the rotating
+// caller when the provider has multiple API keys, otherwise the active
+// plain *chat.Client.
+func (s *Server) activeChatCaller(providerKey string) provider.ChatCaller {
+	pm := s.activeProviderManager()
+	if pm != nil && pm.ProviderKeyCount(providerKey) > 1 {
+		return provider.NewRotatingChatClient(pm, providerKey, func(idx int) *chat.Client {
+			return s.chatClientIndex(providerKey, idx)
+		})
+	}
+	if raw := s.activeChatClient(providerKey); raw != nil {
+		if c, ok := raw.(*chat.Client); ok {
+			return c
 		}
 	}
-	return s.chatClients[providerKey]
+	return nil
 }
 
 func (s *Server) activeGoogleClient(providerKey string) any {
+	s.invalidateClientCacheOnManagerChange()
 	// Check runtime-driven cache first.
 	s.googleCacheMu.RLock()
 	if cached, ok := s.googleCache[providerKey]; ok {
@@ -141,23 +319,47 @@ func (s *Server) activeGoogleClient(providerKey string) any {
 	}
 	s.googleCacheMu.RUnlock()
 
-	if snap := s.runtimeSnapshot(); snap != nil {
-		if def, ok := snap.Config.ProviderDefs[providerKey]; ok && def.Protocol == config.ProtocolGoogleGenAI {
-			client := google.NewClient(google.ClientConfig{
-				BaseURL:   def.BaseURL,
-				APIKey:    def.APIKey,
-				Project:   def.Project,
-				Location:  def.Location,
-				Version:   def.APIVersion,
-				UserAgent: def.UserAgent,
-			})
-			s.googleCacheMu.Lock()
-			s.googleCache[providerKey] = client
-			s.googleCacheMu.Unlock()
-			return client
-		}
+	snap := s.runtimeSnapshot()
+	if snap == nil {
+		return s.googleClients[providerKey]
 	}
-	return s.googleClients[providerKey]
+	def, ok := snap.Config.ProviderDefs[providerKey]
+	if !ok || def.Protocol != config.ProtocolGoogleGenAI {
+		return s.googleClients[providerKey]
+	}
+	// R6: def and manager come from the SAME snapshot so a mid-build
+	// reload cannot pair a pre-reload BaseURL with a post-reload key —
+	// see activeChatClient for the mismatch rationale.
+	mgr := snap.ProviderMgr
+	if mgr == nil {
+		// The snapshot has no manager (runtime booted without one) but
+		// the server was booted with one: source the key from the boot
+		// manager, matching activeProviderManager's fallback. Otherwise
+		// def.APIKey — the raw comma-separated list — would leak every
+		// key into the ?key= query param. Both-nil keeps def.APIKey,
+		// identical to pre-R6 (test-only state).
+		mgr = s.providerMgr
+	}
+	apiKey := def.APIKey
+	if mgr != nil {
+		// Google-genai clients are built from the ACTIVE API key. Google
+		// rotation is explicitly out of scope (design D4): these clients
+		// are cached per provider and never rotate on 429/402.
+		apiKey = mgr.ProviderAPIKey(providerKey)
+	}
+	client := google.NewClient(google.ClientConfig{
+		BaseURL:   def.BaseURL,
+		APIKey:    apiKey,
+		Project:   def.Project,
+		Location:  def.Location,
+		Version:   def.APIVersion,
+		UserAgent: def.UserAgent,
+	})
+	// Same contract as activeChatClient: cache only while mgr still owns
+	// the caches; serve the built client uncached when a reload swapped
+	// the manager after this snapshot was taken.
+	s.cacheGoogleClient(mgr, providerKey, client)
+	return client
 }
 
 func New(cfg Config) *Server {

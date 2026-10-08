@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"providerbridge/internal/protocol/anthropic"
 )
@@ -29,4 +30,26 @@ type ProviderClient interface {
 // interface to access the underlying client.
 type AnthropicClientAccessor interface {
 	AnthropicClient() *anthropic.Client
+}
+
+// AnthropicUpstreamClient is the typed anthropic call surface: both
+// *anthropic.Client and the rotating typed client satisfy it.
+type AnthropicUpstreamClient interface {
+	CreateMessage(ctx context.Context, req anthropic.MessageRequest) (anthropic.MessageResponse, error)
+	StreamMessage(ctx context.Context, req anthropic.MessageRequest) (anthropic.Stream, error)
+}
+
+// AsAnthropicUpstream returns the typed anthropic client behind a
+// ProviderClient: the rotating typed client for multi-key providers, the
+// plain *anthropic.Client for single-key providers. Rotation happens inside
+// the returned client's calls.
+func AsAnthropicUpstream(pc ProviderClient) (AnthropicUpstreamClient, error) {
+	switch v := pc.(type) {
+	case *rotatingProviderClient:
+		return v.typed, nil
+	case *anthropicClientAdapter:
+		return v.client, nil
+	default:
+		return nil, fmt.Errorf("provider client %T does not support typed anthropic upstream calls", pc)
+	}
 }

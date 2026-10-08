@@ -326,6 +326,7 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 		return
 	}
 
+candidateLoop:
 	for i, candidate := range openaiCandidates {
 		providerKey := candidate.ProviderKey
 		lastProviderKey = providerKey
@@ -402,67 +403,134 @@ func (server *Server) handleOpenAIResponse(writer http.ResponseWriter, request *
 			continue
 		}
 
-		// Create upstream request
-		upstreamReq, err := http.NewRequestWithContext(request.Context(), http.MethodPost, upstreamURL, bytes.NewReader(body))
-		if err != nil {
-			if isLast {
-				log.Error("failed to create upstream request", "error", err)
-				payload := openai.ErrorResponse{Error: openai.ErrorObject{
-					Message: "upstream request failed",
-					Type:    "server_error",
-					Code:    "internal_error",
-				}}
-				record.Error = traceError("create_openai_upstream_request", err)
-				hookErr = "create upstream request"
-				record.OpenAIResponse = payload
-				server.writeTrace(record)
-				writeOpenAIError(writer, http.StatusBadGateway, payload)
-				return
-			}
-			logger.Warn("OpenAI upstream request creation failed; trying next candidate",
-				"provider", providerKey,
-				"request_model", responsesRequest.Model,
-				"attempt", i+1,
-				"error", err)
-			lastErr = err
-			continue
-		}
-		upstreamReq.Header.Set("Content-Type", "application/json")
-		upstreamReq.Header.Set("Authorization", "Bearer "+apiKey)
-
 		client := server.openAIHTTP
 		if client == nil {
 			client = &http.Client{Timeout: 0}
 		}
-		upstreamResp, err := client.Do(upstreamReq)
-		if err != nil {
-			if isLast {
-				log.Error("OpenAI upstream request failed",
-					"request_model", responsesRequest.Model,
-					"actual_model", upstreamRequest.Model,
-					"error", err.Error(),
-					"stage", "openai_upstream",
-				)
-				payload := openai.ErrorResponse{Error: openai.ErrorObject{
-					Message: err.Error(),
-					Type:    "server_error",
-					Code:    "provider_error",
-				}}
-				hookErr = err.Error()
-				record.Error = traceError("openai_upstream", err)
-				record.OpenAIResponse = payload
-				server.writeTrace(record)
-				writeOpenAIError(writer, http.StatusBadGateway, payload)
-				return
+
+		// Inner rotation loop over the provider's API keys: the active key
+		// is tried first; a 429/402 response rotates to the next key.
+		// Single-key providers run the loop exactly once (byte-identical
+		// behavior). Transport errors NEVER rotate — they fall back to the
+		// next provider candidate as before.
+		keyCount := pm.ProviderKeyCount(providerKey)
+		if keyCount == 0 {
+			keyCount = 1 // provider with no split keys: single attempt with the resolved key
+		}
+		startIdx := pm.ActiveKeyIndex(providerKey)
+		var activeBody []byte         // buffered active-key response body (429/402 bodies are small)
+		var activeResp *http.Response // active-key response, replayed verbatim on full rotation failure
+		var upstreamResp *http.Response
+		for k := 0; k < keyCount; k++ {
+			idx := (startIdx + k) % keyCount
+			// Fetch the key by index uniformly for every attempt: the k==0
+			// attempt uses the LIVE startIdx key (never a captured one). An
+			// empty result (unknown provider) falls back to the resolved key,
+			// preserving the single-attempt behavior.
+			key := pm.ProviderAPIKeyIndex(providerKey, idx)
+			if key == "" {
+				key = apiKey
 			}
-			logger.Warn("OpenAI upstream connection failed; falling back to next candidate",
-				"request_model", responsesRequest.Model,
-				"attempt", i+1,
-				"provider", providerKey,
-				"error", err,
-			)
-			lastErr = err
-			continue
+			upstreamReq, err := http.NewRequestWithContext(request.Context(), http.MethodPost, upstreamURL, bytes.NewReader(body))
+			if err != nil {
+				if isLast {
+					log.Error("failed to create upstream request", "error", err)
+					payload := openai.ErrorResponse{Error: openai.ErrorObject{
+						Message: "upstream request failed",
+						Type:    "server_error",
+						Code:    "internal_error",
+					}}
+					record.Error = traceError("create_openai_upstream_request", err)
+					hookErr = "create upstream request"
+					record.OpenAIResponse = payload
+					server.writeTrace(record)
+					writeOpenAIError(writer, http.StatusBadGateway, payload)
+					return
+				}
+				logger.Warn("OpenAI upstream request creation failed; trying next candidate",
+					"provider", providerKey,
+					"request_model", responsesRequest.Model,
+					"attempt", i+1,
+					"error", err)
+				lastErr = err
+				continue candidateLoop
+			}
+			upstreamReq.Header.Set("Content-Type", "application/json")
+			upstreamReq.Header.Set("Authorization", "Bearer "+key)
+			resp, doErr := client.Do(upstreamReq)
+			if doErr != nil {
+				// Transport error: NEVER rotate — keep the existing
+				// candidate-fallback behavior verbatim.
+				if isLast {
+					log.Error("OpenAI upstream request failed",
+						"request_model", responsesRequest.Model,
+						"actual_model", upstreamRequest.Model,
+						"error", doErr.Error(),
+						"stage", "openai_upstream",
+					)
+					payload := openai.ErrorResponse{Error: openai.ErrorObject{
+						Message: doErr.Error(),
+						Type:    "server_error",
+						Code:    "provider_error",
+					}}
+					hookErr = doErr.Error()
+					record.Error = traceError("openai_upstream", doErr)
+					record.OpenAIResponse = payload
+					server.writeTrace(record)
+					writeOpenAIError(writer, http.StatusBadGateway, payload)
+					return
+				}
+				logger.Warn("OpenAI upstream connection failed; falling back to next candidate",
+					"request_model", responsesRequest.Model,
+					"attempt", i+1,
+					"provider", providerKey,
+					"error", doErr,
+				)
+				lastErr = doErr
+				continue candidateLoop
+			}
+			if provider.IsRotatableStatus(resp.StatusCode) {
+				// Rotatable status (429/402): buffer the body (small) and try
+				// the next key. The ACTIVE key's response is kept for the
+				// verbatim replay on full rotation failure.
+				buf, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if k == 0 {
+					activeResp, activeBody = resp, buf
+				}
+				if k < keyCount-1 {
+					slog.Warn("upstream key rotation: retrying with next API key",
+						"provider", providerKey, "from_index", idx, "to_index", (idx+1)%keyCount, "status", resp.StatusCode)
+					continue
+				}
+				// The last key also failed rotatable: full rotation failure —
+				// fall through to the verbatim active-key replay below.
+				break
+			}
+			// Advance the active index ONLY on a 2xx success: a non-2xx
+			// response at k>0 is still proxied verbatim, but the failing key
+			// must NOT become the active one (mirrors runWithRotation's
+			// advance-on-success rule).
+			if k > 0 && idx != startIdx && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				pm.AdvanceKeyIndex(providerKey, startIdx, idx)
+			}
+			upstreamResp = resp
+			break
+		}
+		if upstreamResp == nil {
+			if activeResp != nil {
+				// Full rotation failure: every key returned 429/402. Replay the
+				// ACTIVE-key response verbatim — status, headers and body are
+				// identical to what today's single-key passthrough sends for
+				// that response.
+				upstreamResp = activeResp
+				upstreamResp.Body = io.NopCloser(bytes.NewReader(activeBody))
+			} else {
+				// No response and nothing buffered: unreachable (the loop runs
+				// at least once) — fall back to the next candidate defensively.
+				lastErr = fmt.Errorf("provider %q returned no upstream response", providerKey)
+				continue candidateLoop
+			}
 		}
 		defer upstreamResp.Body.Close()
 

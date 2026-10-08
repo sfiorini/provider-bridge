@@ -50,6 +50,14 @@ type ConfigStore interface {
 	// ExportYAML serializes the current DB state as YAML bytes.
 	// If includeSecrets is false, API key values are masked.
 	ExportYAML(includeSecrets bool) ([]byte, error)
+
+	// LoadProviderKeyIndexes returns the persisted active key rotation index
+	// per provider key.
+	LoadProviderKeyIndexes(ctx context.Context) (map[string]int, error)
+
+	// SetProviderKeyIndex persists the active key rotation index for a
+	// provider key (single-row upsert).
+	SetProviderKeyIndex(ctx context.Context, providerKey string, idx int) error
 }
 
 // ProviderRow represents a row in the config_store_providers table.

@@ -31,6 +31,11 @@ type ConfigSnapshot struct {
 type Runtime struct {
 	snapshot atomic.Pointer[ConfigSnapshot]
 	mu       sync.Mutex // guards Reload; not needed for Current()
+
+	// keyRotationStore, when set, is attached to every manager built by
+	// buildSnapshot (Reload) so rotation state persists across rebuilds.
+	// Guarded by mu.
+	keyRotationStore provider.KeyRotationStore
 }
 
 // NewRuntime creates a Runtime with the given initial configuration.
@@ -51,8 +56,23 @@ func (rt *Runtime) Current() *ConfigSnapshot {
 	return rt.snapshot.Load()
 }
 
+// SetKeyRotationStore attaches the key rotation persistence store to the
+// runtime and to the current snapshot's provider manager, so runtime
+// reloads preserve rotation state across manager rebuilds.
+func (rt *Runtime) SetKeyRotationStore(store provider.KeyRotationStore) {
+	rt.mu.Lock()
+	rt.keyRotationStore = store
+	rt.mu.Unlock()
+	if snap := rt.snapshot.Load(); snap != nil && snap.ProviderMgr != nil {
+		snap.ProviderMgr.SetKeyRotationStore(store)
+	}
+}
+
 func (rt *Runtime) ValidateCandidate(cfg config.Config) error {
-	if _, err := buildSnapshot(cfg, "runtime candidate"); err != nil {
+	rt.mu.Lock()
+	krs := rt.keyRotationStore
+	rt.mu.Unlock()
+	if _, err := buildSnapshot(cfg, "runtime candidate", krs); err != nil {
 		return err
 	}
 	return nil
@@ -66,7 +86,7 @@ func (rt *Runtime) Reload(cfg config.Config) error {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
-	snapshot, err := buildSnapshot(cfg, "runtime reload")
+	snapshot, err := buildSnapshot(cfg, "runtime reload", rt.keyRotationStore)
 	if err != nil {
 		return err
 	}
@@ -74,7 +94,7 @@ func (rt *Runtime) Reload(cfg config.Config) error {
 	return nil
 }
 
-func buildSnapshot(cfg config.Config, errorPrefix string) (*ConfigSnapshot, error) {
+func buildSnapshot(cfg config.Config, errorPrefix string, krs provider.KeyRotationStore) (*ConfigSnapshot, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: config validation: %w", errorPrefix, err)
 	}
@@ -86,6 +106,9 @@ func buildSnapshot(cfg config.Config, errorPrefix string) (*ConfigSnapshot, erro
 	providerMgr, err := provider.NewProviderManager(providerDefs, modelRoutes)
 	if err != nil {
 		return nil, fmt.Errorf("%s: provider manager: %w", errorPrefix, err)
+	}
+	if krs != nil {
+		providerMgr.SetKeyRotationStore(krs)
 	}
 
 	pricing := provider.BuildPricingFromConfig(providerCfg)

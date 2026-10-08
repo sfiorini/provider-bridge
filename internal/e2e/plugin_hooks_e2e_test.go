@@ -878,7 +878,11 @@ func TestPluginHooks_MultiplePlugins(t *testing.T) {
 	cfg := e2eMinimalConfig()
 
 	mock1 := &e2eMockPlugin{}
-	mock2 := &e2eMockPlugin2{}
+	// enabled must be true: the registry gates every hook on
+	// EnabledForModel, so a disabled plugin (the zero value) would never
+	// receive MutateCoreRequest — that gating contract has its own test
+	// (TestPluginHooks_CoreHooksRespectEnabledForModel).
+	mock2 := &e2eMockPlugin2{enabled: true}
 	pReg := plugin.NewRegistry(nil)
 	pReg.Register(mock1)
 	pReg.Register(mock2)

@@ -902,6 +902,8 @@ func (a *ChatProviderAdapter) fromContentPartMap(m map[string]any) format.CoreCo
 			Type:      "image",
 			ImageData: url,
 		}
+	case "thinking":
+		return format.CoreContentBlock{Type: "reasoning", ReasoningText: extractThinkingTextMap(m["thinking"])}
 	default:
 		text, _ := m["text"].(string)
 		if text != "" {
@@ -941,4 +943,17 @@ func unquoteArguments(raw json.RawMessage) json.RawMessage {
 		return raw
 	}
 	return json.RawMessage(s)
+}
+
+// extractThinkingTextMap adapts a decoded JSON "thinking" value (any) to
+// the shared tolerant string/array extraction used by Delta.UnmarshalJSON.
+func extractThinkingTextMap(v any) string {
+	if v == nil {
+		return ""
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return extractThinkingText(raw)
 }

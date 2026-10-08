@@ -235,7 +235,16 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 	}
 
 	// === Phase 3: Build Runtime ===
+	// Attach key rotation persistence to the active manager (covers both
+	// the YAML build at :109 and the DB rebuild at :203) and to the runtime
+	// (covers runtime reloads via buildSnapshot).
+	if cs != nil {
+		providerMgr.SetKeyRotationStore(cs)
+	}
 	rt = runtime.NewRuntime(cfg, providerMgr, pricing)
+	if cs != nil {
+		rt.SetKeyRotationStore(cs)
+	}
 
 	// === Phase 4: Build Server with Runtime ===
 	// Create shared cache registry (used by both Bridge and Adapter paths).
@@ -297,17 +306,17 @@ func runTransform(ctx context.Context, cfg config.Config, errors io.Writer) erro
 	for key, def := range cfg.ProviderDefs {
 		switch def.Protocol {
 		case config.ProtocolOpenAIChat:
-			chatClients[key] = chat.NewClient(chat.ClientConfig{
-				BaseURL:   def.BaseURL,
-				APIKey:    def.APIKey,
-				Client:    proxyHTTPClient,
-				UserAgent: def.UserAgent,
-			})
+			chatClients[key] = newBootChatClient(providerMgr, def, key, proxyHTTPClient)
 			slog.Debug("chat client created", "provider", key)
 		case config.ProtocolGoogleGenAI:
+			// Google-genai clients are built from the ACTIVE API key. Google
+			// rotation is explicitly out of scope (design D4): these clients
+			// are cached per provider and never rotate on 429/402. At boot the
+			// active index is 0, so this equals the first configured key and
+			// never leaks the raw comma-separated list.
 			googleClients[key] = google.NewClient(google.ClientConfig{
 				BaseURL:   def.BaseURL,
-				APIKey:    def.APIKey,
+				APIKey:    providerMgr.ProviderAPIKey(key),
 				Client:    proxyHTTPClient,
 				Project:   def.Project,
 				Location:  def.Location,
@@ -570,6 +579,21 @@ func probeProviderWebSearch(ctx context.Context, key string, pm *provider.Provid
 	slog.Info("provider supports web search", "provider", key, "model", upstreamModel)
 	return "enabled"
 }
+
+// newBootChatClient builds the boot-time plain chat client for a provider.
+// It is built from the provider's ACTIVE key (ProviderAPIKey) — never the raw
+// comma-separated def.APIKey, which would leak into the Authorization header
+// via the visual path (wrapWithVisual, adapter_dispatch.go:2421) and the
+// activeChatClient fallback (server.go:133).
+func newBootChatClient(pm *provider.ProviderManager, def config.ProviderDef, key string, httpClient *http.Client) *chat.Client {
+	return chat.NewClient(chat.ClientConfig{
+		BaseURL:   def.BaseURL,
+		APIKey:    pm.ProviderAPIKey(key),
+		Client:    httpClient,
+		UserAgent: def.UserAgent,
+	})
+}
+
 func resolveModelWebSearchWithProber(ctx context.Context, modelAlias, providerKey, upstreamModel string, modelWS config.WebSearchSupport, pm *provider.ProviderManager, cfg config.Config, prober webSearchCandidateProber) string {
 	switch modelWS {
 	case config.WebSearchSupportDisabled:

@@ -85,7 +85,11 @@ func (c *Client) CreateChat(ctx context.Context, req *ChatRequest) (*ChatRespons
 
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		body, _ := io.ReadAll(response.Body)
-		return nil, fmt.Errorf("chat API error: status=%d body=%s", response.StatusCode, string(body))
+		return nil, &ProviderError{
+			StatusCode: response.StatusCode,
+			Message:    fmt.Sprintf("chat API error: status=%d body=%s", response.StatusCode, string(body)),
+			RequestID:  response.Header.Get("x-request-id"),
+		}
 	}
 
 	var result ChatResponse
@@ -133,7 +137,11 @@ func (c *Client) StreamChat(ctx context.Context, req *ChatRequest) (<-chan ChatS
 	if response.StatusCode < 200 || response.StatusCode > 299 {
 		defer response.Body.Close()
 		body, _ := io.ReadAll(response.Body)
-		return nil, fmt.Errorf("chat API stream error: status=%d body=%s", response.StatusCode, string(body))
+		return nil, &ProviderError{
+			StatusCode: response.StatusCode,
+			Message:    fmt.Sprintf("chat API stream error: status=%d body=%s", response.StatusCode, string(body)),
+			RequestID:  response.Header.Get("x-request-id"),
+		}
 	}
 
 	ch := make(chan ChatStreamChunk, 64)

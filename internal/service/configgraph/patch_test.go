@@ -214,3 +214,24 @@ func TestApplyPatchToFileConfigRejectsUnsupportedRoutePriority(t *testing.T) {
 		t.Fatalf("unexpected error target: %+v", errs[0])
 	}
 }
+
+// TestApplyPatchToFileConfigKeepsCommaKeyWhenMasked (S-5-2): a comma-separated
+// multi-key value cannot collide with the "******" placeholder literal, so a
+// masked PATCH preserves the whole comma list.
+func TestApplyPatchToFileConfigKeepsCommaKeyWhenMasked(t *testing.T) {
+	fc := testConfig().ToFileConfig()
+	pd := fc.Providers["anthropic"]
+	pd.APIKey = "k1,k2"
+	fc.Providers["anthropic"] = pd
+
+	patched, errs := ApplyPatchToFileConfig(fc, []PatchOp{
+		{Kind: ResourceProvider, ID: "anthropic", Field: "api_key", Value: secretMask},
+	})
+
+	if len(errs) != 0 {
+		t.Fatalf("ApplyPatchToFileConfig returned errors: %+v", errs)
+	}
+	if got := patched.Providers["anthropic"].APIKey; got != "k1,k2" {
+		t.Fatalf("Providers[anthropic].APIKey = %q, want %q (comma list preserved)", got, "k1,k2")
+	}
+}
