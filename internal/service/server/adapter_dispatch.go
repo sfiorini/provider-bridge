@@ -410,8 +410,8 @@ func (s *Server) handleWithAdapters(
 			return
 		}
 
-		chatClientRaw := s.activeChatClient(preferred.ProviderKey)
-		if chatClientRaw == nil {
+		chatCaller := s.activeChatCaller(preferred.ProviderKey)
+		if chatCaller == nil {
 			log.Error("adapter path: no chat client for provider", "provider", preferred.ProviderKey)
 			payload := openai.ErrorResponse{
 				Error: openai.ErrorObject{
@@ -424,22 +424,6 @@ func (s *Server) handleWithAdapters(
 			record.OpenAIResponse = payload
 			adapterHookErr = "chat_client"
 			writeOpenAIError(w, http.StatusBadGateway, payload)
-			return
-		}
-		chatClient, ok := chatClientRaw.(*chat.Client)
-		if !ok {
-			log.Error("adapter path: invalid chat client type", "provider", preferred.ProviderKey)
-			payload := openai.ErrorResponse{
-				Error: openai.ErrorObject{
-					Message: fmt.Sprintf("invalid chat client for provider %q", preferred.ProviderKey),
-					Type:    "server_error",
-					Code:    "internal_error",
-				},
-			}
-			record.Error = traceError("chat_client_type", fmt.Errorf("invalid chat client for %q", preferred.ProviderKey))
-			record.OpenAIResponse = payload
-			adapterHookErr = "chat_client_type"
-			writeOpenAIError(w, http.StatusInternalServerError, payload)
 			return
 		}
 
@@ -472,7 +456,7 @@ func (s *Server) handleWithAdapters(
 		// real chat client so the orchestrator's per-round upstream calls hit
 		// the chat-protocol endpoint instead.
 		visualCandidate := preferred
-		visualCandidate.Client = &chatProviderClient{c: chatClient}
+		visualCandidate.Client = &chatProviderClient{c: chatCaller}
 		if needsAssist {
 			if visProv := s.wrapWithVisual(ctx, openAIReq.Model, visualCandidate, providerAdapter, finalizeChatUpstream); visProv != nil {
 				visRan = true
@@ -526,9 +510,9 @@ func (s *Server) handleWithAdapters(
 
 		var chatResp *chat.ChatResponse
 		if wsInjected {
-			chatResp, err = s.executeChatSearchLoop(ctx, preferred.ProviderKey, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+			chatResp, err = s.executeChatSearchLoop(ctx, preferred.ProviderKey, chatCaller, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 		} else {
-			chatResp, err = chatClient.CreateChat(ctx, chatReq)
+			chatResp, err = chatCaller.CreateChat(ctx, chatReq)
 		}
 		if err != nil {
 			log.Error("adapter path: Chat API call failed", "error", err)
@@ -1252,8 +1236,8 @@ func (s *Server) handleAdapterStream(
 			prependCachedReasoningForChat(chatReq, sess, candidate.ProviderKey == "deepseek")
 		}
 
-		chatClientRaw := s.activeChatClient(candidate.ProviderKey)
-		if chatClientRaw == nil {
+		chatCaller := s.activeChatCaller(candidate.ProviderKey)
+		if chatCaller == nil {
 			log.Error("adapter stream: no chat client", "provider", candidate.ProviderKey)
 			payload := openai.ErrorResponse{
 				Error: openai.ErrorObject{
@@ -1265,21 +1249,6 @@ func (s *Server) handleAdapterStream(
 			streamRecord.Error = traceError("stream_chat_client", fmt.Errorf("no chat client for %q", candidate.ProviderKey))
 			streamRecord.OpenAIResponse = payload
 			writeOpenAIError(w, http.StatusBadGateway, payload)
-			return
-		}
-		chatClient, ok := chatClientRaw.(*chat.Client)
-		if !ok {
-			log.Error("adapter stream: invalid chat client type", "provider", candidate.ProviderKey)
-			payload := openai.ErrorResponse{
-				Error: openai.ErrorObject{
-					Message: fmt.Sprintf("invalid chat client for provider %q", candidate.ProviderKey),
-					Type:    "server_error",
-					Code:    "internal_error",
-				},
-			}
-			streamRecord.Error = traceError("stream_chat_client_type", fmt.Errorf("invalid chat client for %q", candidate.ProviderKey))
-			streamRecord.OpenAIResponse = payload
-			writeOpenAIError(w, http.StatusInternalServerError, payload)
 			return
 		}
 
@@ -1309,7 +1278,7 @@ func (s *Server) handleAdapterStream(
 					return req, nil
 				}
 				visCandidate := candidate
-				visCandidate.Client = &chatProviderClient{c: chatClient}
+				visCandidate.Client = &chatProviderClient{c: chatCaller}
 				if visProv := s.wrapWithVisual(ctx, openAIReq.Model, visCandidate, providerAdapter, finalizeUpstream); visProv != nil {
 					visRan = true
 					coreResp, visErr := visProv.CreateCore(ctx, coreReq)
@@ -1362,9 +1331,9 @@ func (s *Server) handleAdapterStream(
 
 		if wsInjected {
 			searchCfg := s.resolvedSearchConfig(candidate.ProviderKey, openAIReq.Model)
-			chatStream, err = s.chatSearchBufferedStream(ctx, candidate.ProviderKey, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+			chatStream, err = s.chatSearchBufferedStream(ctx, candidate.ProviderKey, chatCaller, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 		} else {
-			chatStream, err = chatClient.StreamChat(ctx, chatReq)
+			chatStream, err = chatCaller.StreamChat(ctx, chatReq)
 		}
 		if err != nil {
 			log.Error("adapter stream: StreamChat failed", "error", err)
