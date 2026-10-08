@@ -513,3 +513,56 @@ func TestPassthroughRotationFullFailureReplaysActiveKeyBody(t *testing.T) {
 		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
 	}
 }
+
+// TestPassthroughRotationNoAdvanceOnNon2xx is the F1 variant: k1 returns 429
+// (rotatable) and k2 returns 500 (non-rotatable). The 500 must be proxied to
+// the caller, but the active index must NOT advance to k2 — advance only on
+// a 2xx success.
+func TestPassthroughRotationNoAdvanceOnNon2xx(t *testing.T) {
+	rec := &keyRecorder{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "Bearer k1" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, "quota")
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "boom")
+	}))
+	defer upstream.Close()
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"openai": {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIResponse,
+			},
+		},
+		map[string]provider.ModelRoute{
+			"rot": {Provider: "openai", Name: "gpt-upstream"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	srv := New(Config{ProviderMgr: pm})
+
+	body := bytes.NewBufferString(`{"model":"rot","input":"hello"}`)
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", body))
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if got := recorder.Body.String(); got != "boom" {
+		t.Fatalf("response body = %q, want the k2 500 body %q", got, "boom")
+	}
+	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k1", "Bearer k2"}) {
+		t.Fatalf("upstream keys = %v, want [Bearer k1 Bearer k2]", keys)
+	}
+	if idx := pm.ActiveKeyIndex("openai"); idx != 0 {
+		t.Fatalf("ActiveKeyIndex(openai) = %d, want 0 (no advance on non-2xx)", idx)
+	}
+}

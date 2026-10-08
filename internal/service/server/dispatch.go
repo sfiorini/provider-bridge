@@ -503,7 +503,11 @@ candidateLoop:
 				// fall through to the verbatim active-key replay below.
 				break
 			}
-			if k > 0 && idx != startIdx {
+			// Advance the active index ONLY on a 2xx success: a non-2xx
+			// response at k>0 is still proxied verbatim, but the failing key
+			// must NOT become the active one (mirrors runWithRotation's
+			// advance-on-success rule).
+			if k > 0 && idx != startIdx && resp.StatusCode >= 200 && resp.StatusCode < 300 {
 				pm.AdvanceKeyIndex(providerKey, startIdx, idx)
 			}
 			upstreamResp = resp
