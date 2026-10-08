@@ -176,8 +176,8 @@ func (s *Server) executeAnthropicUpstream(
 		if effectiveProvider == nil {
 			return nil, fmt.Errorf("no upstream provider for model %q", coreReq.Model)
 		}
-		acc, ok := effectiveProvider.(provider.AnthropicClientAccessor)
-		if !ok {
+		typedClient, err := provider.AsAnthropicUpstream(effectiveProvider)
+		if err != nil {
 			return nil, fmt.Errorf("provider %q does not support anthropic streaming", outcome.Preferred.ProviderKey)
 		}
 
@@ -188,7 +188,7 @@ func (s *Server) executeAnthropicUpstream(
 			anthReq = &stripped
 		}
 
-		stream, err := acc.AnthropicClient().StreamMessage(ctx, *anthReq)
+		stream, err := typedClient.StreamMessage(ctx, *anthReq)
 		if err != nil {
 			return nil, fmt.Errorf("upstream stream error: %w", err)
 		}
@@ -207,8 +207,8 @@ func (s *Server) executeAnthropicUpstream(
 		return nil, fmt.Errorf("no upstream provider for model %q", coreReq.Model)
 	}
 	if outcome.WSInjected {
-		if acc, ok := effectiveProvider.(provider.AnthropicClientAccessor); ok {
-			wrapped := websearchinjected.WrapProvider(acc.AnthropicClient(), searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds, s.proxyHTTP)
+		if typedClient, terr := provider.AsAnthropicUpstream(effectiveProvider); terr == nil {
+			wrapped := websearchinjected.WrapProvider(typedClient, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds, s.proxyHTTP)
 			effectiveProvider = &searchProviderAdapter{wrapped: wrapped}
 		}
 	}
@@ -238,13 +238,29 @@ func (s *Server) executeAnthropicUpstream(
 		anthReq = &stripped
 	}
 
-	rawResp, err := effectiveProvider.CreateMessage(ctx, *anthReq)
-	if err != nil {
-		return nil, fmt.Errorf("upstream error: %w", err)
-	}
-	msgResp, ok := rawResp.(anthropic.MessageResponse)
-	if !ok {
-		return nil, fmt.Errorf("unexpected anthropic response type %T", rawResp)
+	var msgResp anthropic.MessageResponse
+	if outcome.WSInjected {
+		// WS-injected: effectiveProvider is the searchProviderAdapter
+		// wrapping the orchestrator, which already holds the rotating
+		// typed client and rotates internally.
+		rawResp, err := effectiveProvider.CreateMessage(ctx, *anthReq)
+		if err != nil {
+			return nil, fmt.Errorf("upstream error: %w", err)
+		}
+		resp, ok := rawResp.(anthropic.MessageResponse)
+		if !ok {
+			return nil, fmt.Errorf("unexpected anthropic response type %T", rawResp)
+		}
+		msgResp = resp
+	} else {
+		typedClient, err := provider.AsAnthropicUpstream(effectiveProvider)
+		if err != nil {
+			return nil, fmt.Errorf("provider %q does not support anthropic upstream calls", outcome.Preferred.ProviderKey)
+		}
+		msgResp, err = typedClient.CreateMessage(ctx, *anthReq)
+		if err != nil {
+			return nil, fmt.Errorf("upstream error: %w", err)
+		}
 	}
 	coreResp, err := providerToCoreResponse(ctx, outcome.Adapter, coreReq, &msgResp)
 	if err != nil {
