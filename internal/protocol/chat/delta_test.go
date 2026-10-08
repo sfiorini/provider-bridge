@@ -120,6 +120,73 @@ func TestFromChatContentThinkingBlock(t *testing.T) {
 	}
 }
 
+// TestToCoreStreamArrayFormDelta proves the wire chunk → Core event
+// pipeline emits the reasoning delta before the text delta for array-form
+// content chunks (issue #11), with a reasoning ContentBlock carrying the
+// reasoning text, and that the stream ends with a completion event.
+func TestToCoreStreamArrayFormDelta(t *testing.T) {
+	raw := `{"id":"1","object":"chat.completion.chunk","created":1,"model":"test-model","choices":[{"index":0,"delta":{"role":"assistant","content":[{"type":"thinking","thinking":[{"text":"hmm"}]},{"type":"text","text":"PONG"}]}}]}`
+	var chunk ChatStreamChunk
+	if err := json.Unmarshal([]byte(raw), &chunk); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	src := make(chan ChatStreamChunk, 1)
+	src <- chunk
+	close(src)
+
+	adapter := NewChatProviderAdapter(0, nil, format.CorePluginHooks{})
+	sr, err := adapter.ToCoreStream(context.Background(), (<-chan ChatStreamChunk)(src))
+	if err != nil {
+		t.Fatalf("ToCoreStream error: %v", err)
+	}
+	var events []format.CoreStreamEvent
+	for ev := range sr.Events {
+		events = append(events, ev)
+	}
+	if len(events) == 0 {
+		t.Fatal("no events collected")
+	}
+
+	reasoningIdx, textIdx := -1, -1
+	for i, ev := range events {
+		if ev.Type != format.CoreTextDelta {
+			continue
+		}
+		if ev.Delta == "hmm" && reasoningIdx == -1 {
+			reasoningIdx = i
+		}
+		if ev.Delta == "PONG" {
+			textIdx = i
+		}
+	}
+	if reasoningIdx == -1 {
+		t.Fatalf("no reasoning text delta %q found", "hmm")
+	}
+	if textIdx == -1 {
+		t.Fatalf("no text delta %q found", "PONG")
+	}
+	if reasoningIdx >= textIdx {
+		t.Fatalf("reasoning delta (event %d) must precede text delta (event %d)", reasoningIdx, textIdx)
+	}
+
+	var haveReasoningBlock bool
+	for i, ev := range events {
+		if ev.ContentBlock != nil && ev.ContentBlock.Type == "reasoning" && ev.ContentBlock.ReasoningText == "hmm" {
+			if i >= textIdx {
+				t.Fatalf("reasoning ContentBlock at event %d must precede text delta at event %d", i, textIdx)
+			}
+			haveReasoningBlock = true
+		}
+	}
+	if !haveReasoningBlock {
+		t.Fatalf("no reasoning ContentBlock with ReasoningText %q found", "hmm")
+	}
+
+	if last := events[len(events)-1]; last.Type != format.CoreEventCompleted {
+		t.Fatalf("last event = %v, want %v", last.Type, format.CoreEventCompleted)
+	}
+}
+
 // TestReadStreamToleratesArrayDelta proves the SSE reader keeps the
 // issue-shaped array-form delta chunk (issue #11) and that a garbage data
 // line drops without killing the stream.
