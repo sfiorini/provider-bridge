@@ -489,6 +489,39 @@ func valueOrDefault(value, fallback string) string {
 	return value
 }
 
+// AnthropicClientIndex returns the anthropic client for the provider's API
+// key at rotation index idx, building and caching it lazily. All indices
+// share the provider's *http.Client (ClientOverride or pooled client).
+func (pm *ProviderManager) AnthropicClientIndex(key string, idx int) *anthropic.Client {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	cfg, ok := pm.providers[key]
+	if !ok {
+		return nil
+	}
+	pool := pm.keyClientPools[key]
+	if pool == nil {
+		pool = make(map[int]*anthropic.Client)
+		pm.keyClientPools[key] = pool
+	}
+	keys := pm.apiKeys[key]
+	if idx < 0 || idx >= len(keys) {
+		idx = 0
+	}
+	if c, ok := pool[idx]; ok {
+		return c
+	}
+	c := anthropic.NewClient(anthropic.ClientConfig{
+		BaseURL:   cfg.BaseURL,
+		APIKey:    keys[idx],
+		Version:   cfg.Version,
+		UserAgent: cfg.UserAgent,
+		Client:    pm.httpClients[key],
+	})
+	pool[idx] = c
+	return c
+}
+
 // ClientForKey returns the anthropic.Client for a given provider key.
 func (pm *ProviderManager) ClientForKey(key string) (ProviderClient, error) {
 	pm.mu.RLock()
