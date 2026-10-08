@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-08
+
+### Added
+
+- Multi-key API-key rotation: a provider's `api_key` may now contain multiple keys separated by commas. On HTTP 429 (rate limited) or 402 (quota exhausted) the bridge retries the same request with the next key; the advanced key becomes the active key and is persisted across restarts in a dedicated `key_rotation` SQLite table. Rotation covers the Core upstream executor, the Responses-inbound adapter path, the web-search loops (same-round retry), and the raw OpenAI Responses passthrough (transport errors never rotate; the active-key response is replayed verbatim on full rotation failure). Google-genai rotation is excluded by design. Single-key providers behave exactly as before.
+- Rotation machinery and tests: `config.SplitAPIKeys`, typed `chat.ProviderError` (error text unchanged), `provider.ChatCaller` with rotating chat/anthropic clients, per-path rotation tests, persistence/restart + reload-clamp + PATCH-`******`-secret-preservation tests, masking round-trip tests (graph GET, YAML export, LoadAll), e2e rotation tests (chat streaming, anthropic, persists-across-restart), and multi-key documentation in `config.example.yml`.
+
+### Fixed
+
+- GitHub issue #11: the chat upstream stream parser no longer drops Mistral array-form `delta.content` (`zai-glm-5-3` streamed empty). `Delta.UnmarshalJSON` tolerates string/array/null content and extracts thinking text; the non-stream path maps `thinking` parts to Core reasoning blocks. Regression tests at the unmarshaler, SSE-reader, stream-adapter, and e2e (mock upstream) levels.
+- Boot-time chat clients are built from the provider's active key, so a comma-separated key list can no longer leak into an `Authorization` header via the visual-orchestration path or the `activeChatClient` fallback.
+- Pre-existing e2e failure `TestPluginHooks_MultiplePlugins` (plugin 2 was created disabled, so its mutator never ran).
+
+### Notes
+
+- `TestGoogleGenaiE2E_ToolUseRoundTrip` fails on `main` (pre-existing, unrelated to this release) — tracked as issue #12.
+
 ## [0.1.0] - 2026-10-07
 
 ### Added
