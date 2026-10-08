@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unsafe"
 
 	"providerbridge/internal/config"
 	"providerbridge/internal/protocol/anthropic"
@@ -864,5 +866,35 @@ func TestAdvanceKeyIndexPersistLatestWins(t *testing.T) {
 	}
 	if idx := pm.ActiveKeyIndex("p"); idx != 2 {
 		t.Fatalf("ActiveKeyIndex(p) = %d, want 2", idx)
+	}
+}
+
+// TestSingleKeyAnthropicClientUsesParsedKey checks that the single-key
+// anthropic adapter client is built from the parsed (trimmed) key, not the
+// raw config string. Wire-level assertions cannot catch this (net/http trims
+// surrounding whitespace from header values), so the test reads the client's
+// unexported apiKey field and compares it to ProviderAPIKey (trimmed).
+func TestSingleKeyAnthropicClientUsesParsedKey(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "  padded  "},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	if k := pm.ProviderAPIKey("p"); k != "padded" {
+		t.Fatalf("ProviderAPIKey(p) = %q, want %q (trimmed)", k, "padded")
+	}
+	client, err := pm.ClientForKey("p")
+	if err != nil {
+		t.Fatalf("ClientForKey(p) error = %v", err)
+	}
+	acc, ok := client.(AnthropicClientAccessor)
+	if !ok {
+		t.Fatalf("single-key client type %T does not implement AnthropicClientAccessor", client)
+	}
+	field := reflect.ValueOf(acc.AnthropicClient()).Elem().FieldByName("apiKey")
+	raw := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().String()
+	if raw != "padded" {
+		t.Fatalf("anthropic client apiKey = %q, want %q (parsed key, not raw config string)", raw, "padded")
 	}
 }

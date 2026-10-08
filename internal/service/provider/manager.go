@@ -184,9 +184,12 @@ func NewProviderManager(providerCfgs map[string]ProviderConfig, routes map[strin
 		if len(keys) > 1 {
 			pm.clients[key] = &rotatingProviderClient{typed: &rotatingAnthropicClient{pm: pm, providerKey: key}}
 		} else {
+			// Use the parsed key, not the raw config string: SplitAPIKeys
+			// trims surrounding whitespace, so this matches the key the
+			// chat/dispatch paths send via ProviderAPIKey.
 			pm.clients[key] = &anthropicClientAdapter{client: anthropic.NewClient(anthropic.ClientConfig{
 				BaseURL:   cfg.BaseURL,
-				APIKey:    cfg.APIKey,
+				APIKey:    keys[0],
 				Version:   cfg.Version,
 				UserAgent: cfg.UserAgent,
 				Client:    httpClient,
