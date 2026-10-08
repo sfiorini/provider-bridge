@@ -566,3 +566,57 @@ func TestPassthroughRotationNoAdvanceOnNon2xx(t *testing.T) {
 		t.Fatalf("ActiveKeyIndex(openai) = %d, want 0 (no advance on non-2xx)", idx)
 	}
 }
+
+// TestPassthroughRotationStartsAtActiveIndex pins the F8 uniform idx->key
+// fetch: the k==0 attempt must use the key at the LIVE active index, not a
+// captured one. Start the provider at index 1 (k2 active): k2 returns 429,
+// k1 returns 200 — the first upstream call must carry Bearer k2.
+func TestPassthroughRotationStartsAtActiveIndex(t *testing.T) {
+	rec := &keyRecorder{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "Bearer k2" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			fmt.Fprint(w, "quota")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"resp_rot","object":"response","status":"completed","output":[]}`)
+	}))
+	defer upstream.Close()
+
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"openai": {
+				BaseURL:  upstream.URL,
+				APIKey:   "k1,k2",
+				Protocol: config.ProtocolOpenAIResponse,
+			},
+		},
+		map[string]provider.ModelRoute{
+			"rot": {Provider: "openai", Name: "gpt-upstream"},
+		},
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	if !pm.AdvanceKeyIndex("openai", 0, 1) {
+		t.Fatal("AdvanceKeyIndex(openai,0,1) = false, want true")
+	}
+	srv := New(Config{ProviderMgr: pm})
+
+	body := bytes.NewBufferString(`{"model":"rot","input":"hello"}`)
+	recorder := httptest.NewRecorder()
+	srv.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", body))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if keys := rec.snapshot(); !equalKeys(keys, []string{"Bearer k2", "Bearer k1"}) {
+		t.Fatalf("upstream keys = %v, want [Bearer k2 Bearer k1]", keys)
+	}
+	if idx := pm.ActiveKeyIndex("openai"); idx != 0 {
+		t.Fatalf("ActiveKeyIndex(openai) = %d, want 0 after 2xx at index 0", idx)
+	}
+}

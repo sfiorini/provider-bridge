@@ -423,9 +423,13 @@ candidateLoop:
 		var upstreamResp *http.Response
 		for k := 0; k < keyCount; k++ {
 			idx := (startIdx + k) % keyCount
-			key := apiKey
-			if k > 0 {
-				key = pm.ProviderAPIKeyIndex(providerKey, idx)
+			// Fetch the key by index uniformly for every attempt: the k==0
+			// attempt uses the LIVE startIdx key (never a captured one). An
+			// empty result (unknown provider) falls back to the resolved key,
+			// preserving the single-attempt behavior.
+			key := pm.ProviderAPIKeyIndex(providerKey, idx)
+			if key == "" {
+				key = apiKey
 			}
 			upstreamReq, err := http.NewRequestWithContext(request.Context(), http.MethodPost, upstreamURL, bytes.NewReader(body))
 			if err != nil {
