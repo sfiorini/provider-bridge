@@ -299,19 +299,15 @@ func (s *Server) executeChatUpstream(
 		return req, nil
 	}
 
-	chatClientRaw := s.activeChatClient(outcome.Preferred.ProviderKey)
-	if chatClientRaw == nil {
+	chatCaller := s.activeChatCaller(outcome.Preferred.ProviderKey)
+	if chatCaller == nil {
 		return nil, fmt.Errorf("no chat client for provider %q", outcome.Preferred.ProviderKey)
-	}
-	chatClient, ok := chatClientRaw.(*chat.Client)
-	if !ok {
-		return nil, fmt.Errorf("invalid chat client for provider %q", outcome.Preferred.ProviderKey)
 	}
 
 	// Non-streaming search loop / streaming buffered search both need the
-	// visual candidate with the chat client attached.
+	// visual candidate with the chat caller attached.
 	visualCandidate := outcome.Preferred
-	visualCandidate.Client = &chatProviderClient{c: chatClient}
+	visualCandidate.Client = &chatProviderClient{c: chatCaller}
 
 	// Image-capability gate shared by both branches below: only requests
 	// whose images the upstream cannot consume natively get visual assist
@@ -356,9 +352,9 @@ func (s *Server) executeChatUpstream(
 		var chatStream <-chan chat.ChatStreamChunk
 		var err error
 		if outcome.WSInjected {
-			chatStream, err = s.chatSearchBufferedStream(ctx, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+			chatStream, err = s.chatSearchBufferedStream(ctx, outcome.Preferred.ProviderKey, chatCaller, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 		} else {
-			chatStream, err = chatClient.StreamChat(ctx, chatReq)
+			chatStream, err = chatCaller.StreamChat(ctx, chatReq)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("chat stream error: %w", err)
@@ -401,9 +397,9 @@ func (s *Server) executeChatUpstream(
 	var chatResp *chat.ChatResponse
 	var err error
 	if outcome.WSInjected {
-		chatResp, err = s.executeChatSearchLoop(ctx, chatClient, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
+		chatResp, err = s.executeChatSearchLoop(ctx, outcome.Preferred.ProviderKey, chatCaller, chatReq, searchCfg.tavilyKey, searchCfg.firecrawlKey, searchCfg.maxRounds)
 	} else {
-		chatResp, err = chatClient.CreateChat(ctx, chatReq)
+		chatResp, err = chatCaller.CreateChat(ctx, chatReq)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("chat upstream error: %w", err)

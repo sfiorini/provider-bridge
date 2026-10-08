@@ -2458,7 +2458,8 @@ func (s *Server) wrapWithVisual(
 	return visualpkg.NewCoreBridge(upstreamCP, visCP, visCfg.Model, visCfg.MaxRounds, visCfg.MaxTokens)
 }
 
-// chatProviderClient adapts *chat.Client to provider.ProviderClient so the
+// chatProviderClient adapts a provider.ChatCaller (a plain *chat.Client or
+// the rotating chat client) to provider.ProviderClient so the
 // adapter-based CoreProvider machinery (used by the visual orchestrator) can
 // drive a chat-protocol upstream uniformly across protocols.
 //
@@ -2488,7 +2489,7 @@ func (p *googleProviderClient) StreamMessage(ctx context.Context, req any) (<-ch
 	return nil, fmt.Errorf("googleProviderClient: streaming not supported via ProviderClient interface")
 }
 
-type chatProviderClient struct{ c *chat.Client }
+type chatProviderClient struct{ c provider.ChatCaller }
 
 func (p *chatProviderClient) CreateMessage(ctx context.Context, req any) (any, error) {
 	chatReq, ok := req.(*chat.ChatRequest)
