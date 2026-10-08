@@ -929,3 +929,238 @@ func TestChatClientCacheRefusesClientFromRetiredManager(t *testing.T) {
 		t.Fatal("googleCache[main] retained a client built from a retired manager's key")
 	}
 }
+
+// TestChatClientStoreAfterMidBuildReloadNotCached reproduces the R5
+// window: a request captures the manager (pm1) and builds a client, a
+// runtime reload swaps in a NEW manager, and NO cache read runs in
+// between — so the recorded clientCacheMgr still equals pm1 when the
+// build finishes and the R2-era store guard (clientCacheMgr == mgr)
+// accepts the store. A reader whose invalidation check already passed
+// pre-reload could then find the retired-manager client in its cache
+// lookup. The store must compare against the LIVE manager and refuse.
+func TestChatClientStoreAfterMidBuildReloadNotCached(t *testing.T) {
+	var mu sync.Mutex
+	var auth string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auth = r.Header.Get("Authorization")
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer upstream.Close()
+
+	newCfg := func(apiKey string) config.Config {
+		return config.Config{
+			Mode: config.ModeTransform,
+			ProviderDefs: map[string]config.ProviderDef{
+				"main": {
+					BaseURL:  upstream.URL,
+					APIKey:   apiKey,
+					Protocol: config.ProtocolOpenAIChat,
+					Models:   map[string]config.ModelMeta{"m": {}},
+				},
+			},
+		}
+	}
+
+	cfg := newCfg("k1")
+	pm1, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"main": {
+				BaseURL:    upstream.URL,
+				APIKey:     "k1",
+				Protocol:   config.ProtocolOpenAIChat,
+				ModelNames: []string{"m"},
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	rt := runtime.NewRuntime(cfg, pm1, nil)
+	srv := New(Config{ProviderMgr: pm1, Runtime: rt})
+
+	// The in-flight request has already run its invalidation check on
+	// pm1 (recording pm1 as the cache owner) and captured pm1.
+	srv.invalidateClientCacheOnManagerChange()
+	inflight := chat.NewClient(chat.ClientConfig{BaseURL: upstream.URL, APIKey: "k1"})
+	staleGoogle := google.NewClient(google.ClientConfig{BaseURL: upstream.URL, APIKey: "k1"})
+
+	// The reload lands between the capture and the store, with no
+	// intervening cache read: clientCacheMgr still records pm1.
+	if err := rt.Reload(newCfg("k2")); err != nil {
+		t.Fatalf("Reload() error = %v", err)
+	}
+
+	// The stores must be refused: the LIVE manager is the post-reload
+	// one, even though clientCacheMgr still equals pm1.
+	if srv.cacheChatClient(pm1, "main", inflight) {
+		t.Fatal("cacheChatClient(pm1, main, inflight) = true, want false: a reload retired pm1 between the capture and this store")
+	}
+	if srv.cacheGoogleClient(pm1, "main", staleGoogle) {
+		t.Fatal("cacheGoogleClient(pm1, main, staleGoogle) = true, want false: a reload retired pm1 between the capture and this store")
+	}
+
+	// Nothing from the retired manager may sit in the caches.
+	srv.clientCacheMu.RLock()
+	cached := srv.clientCache["main"]
+	srv.clientCacheMu.RUnlock()
+	if cached != nil {
+		t.Fatal("clientCache[main] holds a client after the refused store, want no entry")
+	}
+	srv.googleCacheMu.RLock()
+	cachedGoogle := srv.googleCache["main"]
+	srv.googleCacheMu.RUnlock()
+	if cachedGoogle != nil {
+		t.Fatal("googleCache[main] holds a client after the refused store, want no entry")
+	}
+
+	// The next read serves the NEW manager's key.
+	raw := srv.activeChatClient("main")
+	client, ok := raw.(*chat.Client)
+	if !ok {
+		t.Fatalf("activeChatClient(main) after reload = %T, want *chat.Client", raw)
+	}
+	req := &chat.ChatRequest{Model: "m", Messages: []chat.ChatMessage{{Role: "user", Content: "hi"}}}
+	if _, err := client.CreateChat(context.Background(), req); err != nil {
+		t.Fatalf("CreateChat() error = %v", err)
+	}
+	mu.Lock()
+	got := auth
+	mu.Unlock()
+	if got != "Bearer k2" {
+		t.Fatalf("upstream Authorization = %q, want %q (post-reload key)", got, "Bearer k2")
+	}
+}
+
+// TestActiveChatClientRacingReloadNeverReturnsNil reproduces the R4
+// regression: a client build overlapping a runtime reload was dropped
+// (nil returned) whenever another reader had already invalidated with
+// the new manager, surfacing to consumers as spurious
+// "no chat client for provider" 502s under live management-API reload
+// traffic. Every successful build must yield a working client: cached
+// when the manager still owns the caches, or served uncached when it
+// swapped mid-build. Run with -race.
+func TestActiveChatClientRacingReloadNeverReturnsNil(t *testing.T) {
+	rec := &keyRecorder{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.record(r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"chatcmpl-1","object":"chat.completion","created":1,"model":"m","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}`)
+	}))
+	defer upstream.Close()
+
+	newCfg := func(apiKey string) config.Config {
+		return config.Config{
+			Mode: config.ModeTransform,
+			ProviderDefs: map[string]config.ProviderDef{
+				"main": {
+					BaseURL:  upstream.URL,
+					APIKey:   apiKey,
+					Protocol: config.ProtocolOpenAIChat,
+					Models:   map[string]config.ModelMeta{"m": {}},
+				},
+			},
+		}
+	}
+
+	cfg1, cfg2 := newCfg("k1"), newCfg("k2")
+	pm, err := provider.NewProviderManager(
+		map[string]provider.ProviderConfig{
+			"main": {
+				BaseURL:    upstream.URL,
+				APIKey:     "k1",
+				Protocol:   config.ProtocolOpenAIChat,
+				ModelNames: []string{"m"},
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	rt := runtime.NewRuntime(cfg1, pm, nil)
+	srv := New(Config{ProviderMgr: pm, Runtime: rt})
+
+	const workers = 4
+	const iters = 150
+	var mu sync.Mutex
+	nils := 0
+	served := 0
+
+	var reloadWG, readersWG sync.WaitGroup
+	stop := make(chan struct{})
+	reloadWG.Add(1)
+	go func() {
+		defer reloadWG.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			cfg := cfg1
+			if i%2 == 1 {
+				cfg = cfg2
+			}
+			if err := rt.Reload(cfg); err != nil {
+				t.Errorf("Reload() error = %v", err)
+				return
+			}
+		}
+	}()
+	for w := 0; w < workers; w++ {
+		readersWG.Add(1)
+		go func() {
+			defer readersWG.Done()
+			for i := 0; i < iters; i++ {
+				use := func(c *chat.Client) {
+					if c == nil {
+						mu.Lock()
+						nils++
+						mu.Unlock()
+						return
+					}
+					// Fresh request per call: CreateChat mutates it
+					// (req.Stream = false), so it must not be shared
+					// across goroutines under -race.
+					req := &chat.ChatRequest{Model: "m", Messages: []chat.ChatMessage{{Role: "user", Content: "hi"}}}
+					if _, err := c.CreateChat(context.Background(), req); err != nil {
+						t.Errorf("CreateChat() error = %v", err)
+						return
+					}
+					mu.Lock()
+					served++
+					mu.Unlock()
+				}
+				raw := srv.activeChatClient("main")
+				client, ok := raw.(*chat.Client)
+				if !ok {
+					t.Errorf("activeChatClient(main) = %T (%v), want *chat.Client", raw, raw)
+					continue
+				}
+				use(client)
+				use(srv.chatClientIndex("main", 0))
+			}
+		}()
+	}
+	// Wait for the readers, then stop the reload storm.
+	readersWG.Wait()
+	close(stop)
+	reloadWG.Wait()
+
+	if nils != 0 {
+		t.Fatalf("%d nil client returns while racing reloads, want 0", nils)
+	}
+	want := 2 * workers * iters
+	if served != want {
+		t.Fatalf("served %d requests, want %d (every built client must be usable)", served, want)
+	}
+	for _, k := range rec.snapshot() {
+		if k != "Bearer k1" && k != "Bearer k2" {
+			t.Fatalf("served Authorization = %q, want a valid key (Bearer k1 or Bearer k2)", k)
+		}
+	}
+}

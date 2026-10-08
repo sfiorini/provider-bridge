@@ -172,12 +172,13 @@ func (s *Server) activeChatClient(providerKey string) any {
 				UserAgent: def.UserAgent,
 				Client:    httpClient,
 			})
-			if !s.cacheChatClient(mgr, providerKey, client) {
-				// The active manager changed while this client was being
-				// built, so its API key came from a retired manager. Drop
-				// it: never serve or cache a stale-key client.
-				return nil
-			}
+			// Cache only while mgr still owns the caches; when a reload
+			// swapped the manager mid-build, serve the built client
+			// UNCACHED instead of nil: its key was active when the request
+			// started (Reload preserves the rotation index), and a nil
+			// here surfaces as a spurious 502 "no chat client for
+			// provider" under live reload traffic.
+			s.cacheChatClient(mgr, providerKey, client)
 			return client
 		}
 	}
@@ -186,37 +187,39 @@ func (s *Server) activeChatClient(providerKey string) any {
 
 // cacheChatClient stores a freshly built chat client in the runtime
 // client cache under cacheKey. mgr is the manager the client was built
-// from — the origin of its API key. The store is atomic with the cache
-// ownership check under clientCacheMu: a runtime reload may swap in a
-// new manager (and invalidate the caches) while the client is being
-// built, and caching a client whose key came from a retired manager
-// would plant a stale key no later invalidation removes. Returns true
-// when the client was cached.
+// from — the origin of its API key. The store is atomic with the
+// ownership check under clientCacheMu, and the check compares against
+// the LIVE manager (s.activeProviderManager()), not the recorded
+// s.clientCacheMgr: invalidation only runs on cache READS, so a reload
+// landing between the mgr capture and this store leaves clientCacheMgr
+// equal to the (now retired) mgr. Comparing against the live manager
+// detects any reload in that window and refuses the store, so a
+// retired-manager client never enters the cache — a reader whose own
+// invalidation check already passed pre-reload could otherwise find it.
+// Returns true when the client was cached; the caller serves the built
+// client either way.
 func (s *Server) cacheChatClient(mgr *provider.ProviderManager, cacheKey string, client *chat.Client) bool {
 	s.clientCacheMu.Lock()
 	defer s.clientCacheMu.Unlock()
-	// clientCacheMgr is only mutated under clientCacheMu by
-	// invalidateClientCacheOnManagerChange (which already ran for the
-	// request that built this client), so equality here means no reload
-	// swapped the manager mid-build.
-	if s.clientCacheMgr != mgr {
+	if s.activeProviderManager() != mgr {
 		return false
 	}
 	s.clientCache[cacheKey] = client
 	return true
 }
 
-// cacheGoogleClient is the google-genai counterpart of cacheChatClient: it
-// stores a freshly built client only while the caches still belong to mgr,
+// cacheGoogleClient is the google-genai counterpart of cacheChatClient:
+// the ownership check compares against the LIVE manager (see the
+// cacheChatClient comment for the mid-build reload window it closes),
 // refusing a client whose key came from a retired manager. It acquires
 // clientCacheMu before googleCacheMu — the same order as
 // invalidateClientCacheOnManagerChange — so the ownership check and the
 // store are atomic with respect to invalidation. Returns true when the
-// client was cached.
+// client was cached; the caller serves the built client either way.
 func (s *Server) cacheGoogleClient(mgr *provider.ProviderManager, providerKey string, client *google.Client) bool {
 	s.clientCacheMu.Lock()
 	defer s.clientCacheMu.Unlock()
-	if s.clientCacheMgr != mgr {
+	if s.activeProviderManager() != mgr {
 		return false
 	}
 	s.googleCacheMu.Lock()
@@ -271,11 +274,10 @@ func (s *Server) chatClientIndex(providerKey string, idx int) *chat.Client {
 		// proxy-aware client when one is configured.
 		Client: pm.HTTPClient(providerKey),
 	})
-	if !s.cacheChatClient(pm, cacheKey, client) {
-		// The active manager changed while this client was being built;
-		// its key came from a retired manager. Drop it.
-		return nil
-	}
+	// Cache only while pm still owns the caches; serve the built client
+	// uncached when a reload swapped the manager mid-build (its key was
+	// active when this request started — see cacheChatClient).
+	s.cacheChatClient(pm, cacheKey, client)
 	return client
 }
 
@@ -328,12 +330,10 @@ func (s *Server) activeGoogleClient(providerKey string) any {
 				Version:   def.APIVersion,
 				UserAgent: def.UserAgent,
 			})
-			if !s.cacheGoogleClient(mgr, providerKey, client) {
-				// The active manager changed while this client was being
-				// built, so its API key came from a retired manager. Drop
-				// it: never serve or cache a stale-key client.
-				return nil
-			}
+			// Same contract as activeChatClient: cache only while mgr
+			// still owns the caches; serve the built client uncached
+			// when a reload swapped the manager mid-build.
+			s.cacheGoogleClient(mgr, providerKey, client)
 			return client
 		}
 	}
