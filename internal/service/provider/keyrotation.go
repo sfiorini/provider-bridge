@@ -75,12 +75,16 @@ func (pm *ProviderManager) advanceKeyIndex(providerKey string, from, to int) boo
 	return true
 }
 
-// persistMutexes holds the per-provider persist serialization mutex for
-// each manager instance, guarded by that manager's mu. It is package-level
-// because the ProviderManager struct lives in manager.go; managers are
-// process-long-lived (Reload swaps fields in place on the same pointer),
-// so entries stay valid for the manager's lifetime.
-var persistMutexes = map[*ProviderManager]map[string]*sync.Mutex{}
+// persistMutexes holds the per-provider persist serialization mutex.
+// It is package-level because the ProviderManager struct lives in
+// manager.go. Runtime reloads create NEW ProviderManager instances
+// (Runtime.Reload builds a fresh manager for every snapshot), so the
+// mutexes are keyed by providerKey — not by manager pointer. That makes
+// the bookkeeping concurrency-safe across managers (sync.Map), serializes
+// persists per provider ACROSS manager instances, and bounds the entries
+// by the provider count (entries keyed by manager pointer would leak one
+// map entry per retired manager).
+var persistMutexes sync.Map // providerKey -> *sync.Mutex
 
 // persistActiveKeyIndex asynchronously persists providerKey's CURRENT
 // active index. Writes are serialized per provider by a lazily created
@@ -89,17 +93,11 @@ var persistMutexes = map[*ProviderManager]map[string]*sync.Mutex{}
 // wins even when an earlier writer is slow. The call never blocks the
 // request path: all waiting happens inside the spawned goroutine.
 func (pm *ProviderManager) persistActiveKeyIndex(providerKey string) {
-	pm.mu.Lock()
-	if persistMutexes[pm] == nil {
-		persistMutexes[pm] = make(map[string]*sync.Mutex)
-	}
-	mu := persistMutexes[pm][providerKey]
-	if mu == nil {
-		mu = &sync.Mutex{}
-		persistMutexes[pm][providerKey] = mu
-	}
+	muI, _ := persistMutexes.LoadOrStore(providerKey, &sync.Mutex{})
+	mu := muI.(*sync.Mutex)
+	pm.mu.RLock()
 	store := pm.keyRotationStore
-	pm.mu.Unlock()
+	pm.mu.RUnlock()
 	if store == nil {
 		return
 	}

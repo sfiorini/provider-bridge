@@ -887,3 +887,79 @@ func TestSingleKeyAnthropicClientUsesParsedKey(t *testing.T) {
 		t.Fatalf("anthropic client apiKey = %q, want %q (parsed key, not raw config string)", raw, "padded")
 	}
 }
+
+// recordingKeyIndexStore is a thread-safe in-memory KeyRotationStore that
+// records every persist call, for concurrent persist tests.
+type recordingKeyIndexStore struct {
+	mu     sync.Mutex
+	loaded map[string]int
+	calls  []string
+}
+
+func (s *recordingKeyIndexStore) LoadProviderKeyIndexes(_ context.Context) (map[string]int, error) {
+	return s.loaded, nil
+}
+
+func (s *recordingKeyIndexStore) SetProviderKeyIndex(_ context.Context, providerKey string, idx int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = append(s.calls, fmt.Sprintf("%s:%d", providerKey, idx))
+	return nil
+}
+
+func (s *recordingKeyIndexStore) recorded() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.calls...)
+}
+
+// TestPersistActiveKeyIndexConcurrentManagers reproduces the R1 crash: the
+// package-level persist-mutex bookkeeping is shared by EVERY ProviderManager,
+// and runtime reloads create NEW manager instances, so persists from
+// different managers for the same provider run concurrently. The
+// bookkeeping must be concurrency-safe and must serialize persists per
+// provider ACROSS managers; without -race the old per-manager map crashed
+// the process with a fatal "concurrent map read and map write". The store
+// must end up with every persist recorded and a valid index.
+func TestPersistActiveKeyIndexConcurrentManagers(t *testing.T) {
+	const managers = 64
+	const rounds = 16
+	store := &recordingKeyIndexStore{loaded: map[string]int{}}
+	var wg sync.WaitGroup
+	for i := 0; i < managers; i++ {
+		pm, err := NewProviderManager(map[string]ProviderConfig{
+			"p": {BaseURL: "https://p.example", APIKey: "k1,k2,k3"},
+		}, nil)
+		if err != nil {
+			t.Fatalf("NewProviderManager() error = %v", err)
+		}
+		pm.SetKeyRotationStore(store)
+		wg.Add(1)
+		go func(pm *ProviderManager) {
+			defer wg.Done()
+			for r := 0; r < rounds; r++ {
+				pm.persistActiveKeyIndex("p")
+			}
+		}(pm)
+	}
+	wg.Wait()
+	// persistActiveKeyIndex spawns one goroutine per call; all writers for
+	// provider "p" are serialized. Poll until every persist landed.
+	want := managers * rounds
+	var calls []string
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); {
+		calls = store.recorded()
+		if len(calls) == want {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if len(calls) != want {
+		t.Fatalf("persist calls = %d, want %d (calls=%v)", len(calls), want, calls)
+	}
+	for _, c := range calls {
+		if c != "p:0" {
+			t.Fatalf("persisted %q, want p:0 (a valid index for a 3-key provider)", c)
+		}
+	}
+}
