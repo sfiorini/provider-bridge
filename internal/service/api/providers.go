@@ -301,6 +301,15 @@ func (r *Router) handleTestProvider(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Probe with the provider's ACTIVE key from the manager, not the raw
+	// def.APIKey (which may be a comma-separated multi-key list).
+	apiKey := def.APIKey
+	if cfg.ProviderMgr != nil {
+		if active := cfg.ProviderMgr.ProviderAPIKey(key); active != "" {
+			apiKey = active
+		}
+	}
+
 	probe := anthropic.MessageRequest{
 		Model:     "claude-3-haiku-20240307",
 		MaxTokens: 1,
@@ -311,7 +320,7 @@ func (r *Router) handleTestProvider(w http.ResponseWriter, req *http.Request) {
 
 	client := anthropic.NewClient(anthropic.ClientConfig{
 		BaseURL: def.BaseURL,
-		APIKey:  def.APIKey,
+		APIKey:  apiKey,
 		Version: def.Version,
 	})
 
