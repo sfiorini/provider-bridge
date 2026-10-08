@@ -735,3 +735,110 @@ func TestIsRotatableStatus(t *testing.T) {
 		}
 	}
 }
+
+// gatedRotationStore blocks the FIRST SetProviderKeyIndex call until
+// released, letting tests force out-of-order writer completion.
+type gatedRotationStore struct {
+	mu           sync.Mutex
+	loaded       map[string]int
+	calls        []string
+	firstEntered chan struct{} // closed exactly once when the first call enters
+	entered      bool          // guards firstEntered so it is never reassigned (race-safe)
+	release      chan struct{}
+}
+
+func (s *gatedRotationStore) LoadProviderKeyIndexes(ctx context.Context) (map[string]int, error) {
+	return s.loaded, nil
+}
+
+func (s *gatedRotationStore) SetProviderKeyIndex(ctx context.Context, providerKey string, idx int) error {
+	s.mu.Lock()
+	if !s.entered {
+		s.entered = true
+		close(s.firstEntered)
+		s.mu.Unlock()
+		<-s.release
+	} else {
+		s.mu.Unlock()
+	}
+	s.mu.Lock()
+	s.calls = append(s.calls, fmt.Sprintf("%s:%d", providerKey, idx))
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *gatedRotationStore) recorded() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.calls...)
+}
+
+// TestAdvanceKeyIndexPersistLatestWins reproduces the F9 race: the writer
+// for the FIRST advance (0->1) is held inside the store while the second
+// advance (1->2) fires. The persist must be serialized per provider and
+// re-read the live index before writing, so the store ends with the
+// LATEST index (p:2), never the stale one (poll <= 1s).
+func TestAdvanceKeyIndexPersistLatestWins(t *testing.T) {
+	pm, err := NewProviderManager(map[string]ProviderConfig{
+		"p": {BaseURL: "https://p.example", APIKey: "k1,k2,k3"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewProviderManager() error = %v", err)
+	}
+	store := &gatedRotationStore{
+		loaded:       map[string]int{},
+		firstEntered: make(chan struct{}),
+		release:      make(chan struct{}),
+	}
+	pm.SetKeyRotationStore(store)
+
+	// First advance: its persist writer must reach the store and block.
+	if !pm.advanceKeyIndex("p", 0, 1) {
+		t.Fatal("advanceKeyIndex(p,0,1) = false, want true")
+	}
+	select {
+	case <-store.firstEntered:
+	case <-time.After(time.Second):
+		t.Fatal("first persist never reached the store")
+	}
+
+	// Second advance while the first writer is stuck inside the store. In
+	// the racy implementation the second writer completes NOW (before the
+	// first); in the serialized implementation it queues behind the first.
+	// Either way, wait a bounded time for it, then release the first writer.
+	if !pm.advanceKeyIndex("p", 1, 2) {
+		t.Fatal("advanceKeyIndex(p,1,2) = false, want true")
+	}
+	sawSecond := false
+	for deadline := time.Now().Add(500 * time.Millisecond); time.Now().Before(deadline); {
+		for _, c := range store.recorded() {
+			if c == "p:2" {
+				sawSecond = true
+			}
+		}
+		if sawSecond {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	close(store.release)
+
+	// Poll up to 1s for both persist writes to land.
+	var calls []string
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); {
+		calls = store.recorded()
+		if len(calls) >= 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("expected 2 persist calls, got %v", calls)
+	}
+	if last := calls[len(calls)-1]; last != "p:2" {
+		t.Fatalf("final persisted index = %s, want p:2 (latest wins)", last)
+	}
+	if idx := pm.ActiveKeyIndex("p"); idx != 2 {
+		t.Fatalf("ActiveKeyIndex(p) = %d, want 2", idx)
+	}
+}

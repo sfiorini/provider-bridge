@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"providerbridge/internal/protocol/anthropic"
@@ -68,19 +69,54 @@ func (pm *ProviderManager) advanceKeyIndex(providerKey string, from, to int) boo
 		return false
 	}
 	pm.activeIdx[providerKey] = to
-	store := pm.keyRotationStore
 	pm.mu.Unlock()
 	slog.Info("active API key advanced", "provider", providerKey, "from_index", from, "to_index", to)
-	if store != nil {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := store.SetProviderKeyIndex(ctx, providerKey, to); err != nil {
-				slog.Error("key rotation index persist failed", "provider", providerKey, "index", to, "error", err)
-			}
-		}()
-	}
+	pm.persistActiveKeyIndex(providerKey)
 	return true
+}
+
+// persistMutexes holds the per-provider persist serialization mutex for
+// each manager instance, guarded by that manager's mu. It is package-level
+// because the ProviderManager struct lives in manager.go; managers are
+// process-long-lived (Reload swaps fields in place on the same pointer),
+// so entries stay valid for the manager's lifetime.
+var persistMutexes = map[*ProviderManager]map[string]*sync.Mutex{}
+
+// persistActiveKeyIndex asynchronously persists providerKey's CURRENT
+// active index. Writes are serialized per provider by a lazily created
+// mutex, and the live index is re-read immediately before the store write,
+// so concurrent rotations persist in order and the LATEST index always
+// wins even when an earlier writer is slow. The call never blocks the
+// request path: all waiting happens inside the spawned goroutine.
+func (pm *ProviderManager) persistActiveKeyIndex(providerKey string) {
+	pm.mu.Lock()
+	if persistMutexes[pm] == nil {
+		persistMutexes[pm] = make(map[string]*sync.Mutex)
+	}
+	mu := persistMutexes[pm][providerKey]
+	if mu == nil {
+		mu = &sync.Mutex{}
+		persistMutexes[pm][providerKey] = mu
+	}
+	store := pm.keyRotationStore
+	pm.mu.Unlock()
+	if store == nil {
+		return
+	}
+	go func() {
+		mu.Lock()
+		defer mu.Unlock()
+		// Re-read the CURRENT index right before writing so the last
+		// writer always persists the newest value (latest-wins).
+		pm.mu.RLock()
+		idx := pm.activeIdx[providerKey]
+		pm.mu.RUnlock()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := store.SetProviderKeyIndex(ctx, providerKey, idx); err != nil {
+			slog.Error("key rotation index persist failed", "provider", providerKey, "index", idx, "error", err)
+		}
+	}()
 }
 
 // AdvanceKeyIndex is the exported form of the CAS advance: it moves the
