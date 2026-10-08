@@ -133,19 +133,25 @@ func (pm *ProviderManager) runWithRotation(ctx context.Context, providerKey stri
 	return firstErr
 }
 
+// IsRotatableStatus reports whether an upstream HTTP status triggers key
+// rotation (429 rate limited, 402 quota/payment required). It is the single
+// source of truth for the rotation policy, shared by isRotatableError (typed
+// error path) and the raw passthrough rotation loop.
+func IsRotatableStatus(code int) bool {
+	return code == http.StatusTooManyRequests || code == http.StatusPaymentRequired
+}
+
 // isRotatableError reports whether an upstream error should trigger key
 // rotation: typed provider errors with HTTP status 429 (rate limited) or
 // 402 (payment required / quota exhausted).
 func isRotatableError(err error) bool {
 	var anthroErr *anthropic.ProviderError
 	if errors.As(err, &anthroErr) {
-		return anthroErr.StatusCode == http.StatusTooManyRequests ||
-			anthroErr.StatusCode == http.StatusPaymentRequired
+		return IsRotatableStatus(anthroErr.StatusCode)
 	}
 	var chatErr *chat.ProviderError
 	if errors.As(err, &chatErr) {
-		return chatErr.StatusCode == http.StatusTooManyRequests ||
-			chatErr.StatusCode == http.StatusPaymentRequired
+		return IsRotatableStatus(chatErr.StatusCode)
 	}
 	return false
 }

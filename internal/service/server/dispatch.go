@@ -489,7 +489,7 @@ candidateLoop:
 				lastErr = doErr
 				continue candidateLoop
 			}
-			if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusPaymentRequired {
+			if provider.IsRotatableStatus(resp.StatusCode) {
 				// Rotatable status (429/402): buffer the body (small) and try
 				// the next key. The ACTIVE key's response is kept for the
 				// verbatim replay on full rotation failure.

@@ -715,3 +715,23 @@ func TestSetKeyRotationStoreAfterReload(t *testing.T) {
 		t.Fatalf("fake store never received (p,2); calls = %v", fake.recorded())
 	}
 }
+
+// TestIsRotatableStatus checks the shared 429/402 rotation policy used by
+// isRotatableError and the raw passthrough loop.
+func TestIsRotatableStatus(t *testing.T) {
+	for _, tc := range []struct {
+		code int
+		want bool
+	}{
+		{http.StatusTooManyRequests, true},
+		{http.StatusPaymentRequired, true},
+		{http.StatusBadRequest, false},
+		{http.StatusUnauthorized, false},
+		{http.StatusInternalServerError, false},
+		{http.StatusOK, false},
+	} {
+		if got := IsRotatableStatus(tc.code); got != tc.want {
+			t.Errorf("IsRotatableStatus(%d) = %v, want %v", tc.code, got, tc.want)
+		}
+	}
+}
