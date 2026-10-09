@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-08
+
+### Changed
+
+- Web console: rebuilt the embedded console assets — the `api_key` field
+  description now documents multi-key rotation (comma-separated keys, 429/402
+  retry with the next key). The console is a committed build artifact that CI
+  does not regenerate, so v0.2.2's image still carried the previous text.
+
 ## [0.2.2] - 2026-10-08
 
 ### Changed
