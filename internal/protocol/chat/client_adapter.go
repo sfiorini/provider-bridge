@@ -54,7 +54,6 @@ func jsonQuote(raw []byte) json.RawMessage {
 	return json.RawMessage(quoted)
 }
 
-
 // ============================================================================
 // Request parsing
 // ============================================================================
@@ -65,8 +64,8 @@ func jsonQuote(raw []byte) json.RawMessage {
 // wire type binds.
 func ParseChatCompletionsRequest(body []byte) (*ChatRequest, error) {
 	var probe struct {
-		MaxTokens         json.RawMessage `json:"max_tokens"`
-		MaxCompletion     json.RawMessage `json:"max_completion_tokens"`
+		MaxTokens     json.RawMessage `json:"max_tokens"`
+		MaxCompletion json.RawMessage `json:"max_completion_tokens"`
 	}
 	if err := json.Unmarshal(body, &probe); err != nil {
 		return nil, fmt.Errorf("invalid JSON body: %w", err)
@@ -164,7 +163,7 @@ func (a *ChatClientAdapter) ToCoreRequest(ctx context.Context, req any) (*format
 		// Tool result message.
 		if msg.Role == "tool" {
 			coreMsg.Content = []format.CoreContentBlock{{
-				Type: "tool_result",
+				Type:      "tool_result",
 				ToolUseID: msg.ToolCallID,
 				ToolResultContent: []format.CoreContentBlock{{
 					Type: "text",
@@ -528,7 +527,7 @@ func (a *ChatClientAdapter) chatStreamLoop(
 	defer close(out)
 
 	send := func(chunk ChatStreamChunk) {
-			bufMu.Lock()
+		bufMu.Lock()
 		if len(*buf) < 1024 {
 			*buf = append(*buf, chunk)
 		}
@@ -569,7 +568,7 @@ func (a *ChatClientAdapter) chatStreamLoop(
 	var usage *Usage
 
 	for event := range events {
-			if a.hooks.OnStreamEvent(ctx, event) {
+		if a.hooks.OnStreamEvent(ctx, event) {
 			continue
 		}
 
@@ -585,7 +584,7 @@ func (a *ChatClientAdapter) chatStreamLoop(
 			}
 			blockTypes[event.Index] = event.ContentBlock.Type
 			if event.ContentBlock.Type == "tool_use" {
-					index := nextToolIndex
+				index := nextToolIndex
 				nextToolIndex++
 				toolIndexes[event.Index] = index
 				send(nextChunk(Delta{ToolCalls: []ToolCall{{
@@ -664,7 +663,7 @@ func (a *ChatClientAdapter) chatStreamLoop(
 				Model:   model,
 				Choices: []StreamChoice{{
 					Index:        0,
-					Delta:         Delta{},
+					Delta:        Delta{},
 					FinishReason: inboundFinishReason(stopReason, "completed"),
 				}},
 			}

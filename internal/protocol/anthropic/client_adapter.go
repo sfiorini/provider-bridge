@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"providerbridge/internal/format"
@@ -23,21 +24,39 @@ import (
 // ClientProtocolID is the registry key for the inbound Anthropic Messages adapter.
 const ClientProtocolID = "anthropic-messages"
 
-// MarshalJSON omits empty fields from the wire shape so inbound SSE events
-// match the Anthropic spec (no "delta":{} or "index":0 noise).
+// MarshalJSON shapes inbound SSE events to match the Anthropic spec:
+// content_block_start/stop/delta events ALWAYS carry "index" (including 0 —
+// strict SDKs reject a missing index), while non-content_block events
+// (message_start, message_delta, message_stop, ping, error) carry none.
 func (ev StreamEvent) MarshalJSON() ([]byte, error) {
+	delta := ev.Delta
+	hasDelta := delta != (StreamDelta{})
+	if strings.HasPrefix(ev.Type, "content_block_") {
+		type contentBlockEventAlias struct {
+			Type         string           `json:"type"`
+			Index        int              `json:"index"`
+			Message      *MessageResponse `json:"message,omitempty"`
+			ContentBlock *ContentBlock    `json:"content_block,omitempty"`
+			Delta        *StreamDelta     `json:"delta,omitempty"`
+			Usage        *Usage           `json:"usage,omitempty"`
+			Error        *ErrorObject     `json:"error,omitempty"`
+		}
+		alias := contentBlockEventAlias{Type: ev.Type, Index: ev.Index, Message: ev.Message, ContentBlock: ev.ContentBlock, Usage: ev.Usage, Error: ev.Error}
+		if hasDelta {
+			alias.Delta = &delta
+		}
+		return json.Marshal(alias)
+	}
 	type streamEventAlias struct {
 		Type         string           `json:"type"`
 		Message      *MessageResponse `json:"message,omitempty"`
-		Index        int              `json:"index,omitempty"`
 		ContentBlock *ContentBlock    `json:"content_block,omitempty"`
 		Delta        *StreamDelta     `json:"delta,omitempty"`
 		Usage        *Usage           `json:"usage,omitempty"`
 		Error        *ErrorObject     `json:"error,omitempty"`
 	}
-	alias := streamEventAlias{Type: ev.Type, Message: ev.Message, Index: ev.Index, ContentBlock: ev.ContentBlock, Usage: ev.Usage, Error: ev.Error}
-	if ev.Delta != (StreamDelta{}) {
-		delta := ev.Delta
+	alias := streamEventAlias{Type: ev.Type, Message: ev.Message, ContentBlock: ev.ContentBlock, Usage: ev.Usage, Error: ev.Error}
+	if hasDelta {
 		alias.Delta = &delta
 	}
 	return json.Marshal(alias)
@@ -67,20 +86,20 @@ func (a *AnthropicClientAdapter) ClientProtocol() string {
 // raw JSON where the Anthropic API allows polymorphic values (system and
 // message content may be a plain string or an array of content blocks).
 type messageRequestRaw struct {
-	Model         string          `json:"model"`
-	MaxTokens     int             `json:"max_tokens"`
-	System        json.RawMessage `json:"system"`
+	Model         string            `json:"model"`
+	MaxTokens     int               `json:"max_tokens"`
+	System        json.RawMessage   `json:"system"`
 	Messages      []json.RawMessage `json:"messages"`
-	Tools         []Tool          `json:"tools"`
-	ToolChoice    *ToolChoice     `json:"tool_choice"`
-	Temperature   *float64        `json:"temperature"`
-	TopP          *float64        `json:"top_p"`
-	TopK          *int            `json:"top_k"`
-	StopSequences []string        `json:"stop_sequences"`
-	Metadata      map[string]any  `json:"metadata"`
-	Stream        bool            `json:"stream"`
-	Thinking      *ThinkingConfig `json:"thinking"`
-	OutputConfig  *OutputConfig   `json:"output_config"`
+	Tools         []Tool            `json:"tools"`
+	ToolChoice    *ToolChoice       `json:"tool_choice"`
+	Temperature   *float64          `json:"temperature"`
+	TopP          *float64          `json:"top_p"`
+	TopK          *int              `json:"top_k"`
+	StopSequences []string          `json:"stop_sequences"`
+	Metadata      map[string]any    `json:"metadata"`
+	Stream        bool              `json:"stream"`
+	Thinking      *ThinkingConfig   `json:"thinking"`
+	OutputConfig  *OutputConfig     `json:"output_config"`
 }
 
 type messageRaw struct {
@@ -308,8 +327,8 @@ func convertInboundBlocks(blocks []ContentBlock) []format.CoreContentBlock {
 			})
 		case "tool_result":
 			out = append(out, format.CoreContentBlock{
-				Type:             "tool_result",
-				ToolUseID:        block.ToolUseID,
+				Type:              "tool_result",
+				ToolUseID:         block.ToolUseID,
 				ToolResultContent: convertToolResultContent(block.Content),
 			})
 		}
@@ -569,11 +588,12 @@ func (a *AnthropicClientAdapter) anthropicStreamLoop(
 				send(StreamEvent{
 					Type: "message_start",
 					Message: &MessageResponse{
-						ID:    msgID,
-						Type:  "message",
-						Role:  "assistant",
-						Model: model,
-						Usage: Usage{InputTokens: 0, OutputTokens: 0},
+						ID:      msgID,
+						Type:    "message",
+						Role:    "assistant",
+						Model:   model,
+						Content: []ContentBlock{},
+						Usage:   Usage{InputTokens: 0, OutputTokens: 0},
 					},
 				})
 			}
@@ -585,7 +605,8 @@ func (a *AnthropicClientAdapter) anthropicStreamLoop(
 					Type: "message_start",
 					Message: &MessageResponse{
 						ID: msgID, Type: "message", Role: "assistant", Model: model,
-						Usage: Usage{InputTokens: 0, OutputTokens: 0},
+						Content: []ContentBlock{},
+						Usage:   Usage{InputTokens: 0, OutputTokens: 0},
 					},
 				})
 			}

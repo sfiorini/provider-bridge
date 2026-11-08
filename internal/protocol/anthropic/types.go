@@ -55,6 +55,17 @@ type ImageSource struct {
 func (block ContentBlock) MarshalJSON() ([]byte, error) {
 	type contentBlock ContentBlock
 	if block.Type != "thinking" || block.Thinking != "" {
+		if block.Type == "text" {
+			// Anthropic emits {"type":"text","text":""} for text
+			// content_block_start; strict SDKs require the text field even
+			// when empty. The shadowing field below re-tags it without
+			// omitempty while keeping every other field.
+			type textBlock struct {
+				contentBlock
+				Text string `json:"text"`
+			}
+			return json.Marshal(textBlock{contentBlock: contentBlock(block), Text: block.Text})
+		}
 		return json.Marshal(contentBlock(block))
 	}
 	type thinkingBlock struct {
@@ -89,15 +100,20 @@ func (choice ToolChoice) IsZero() bool {
 	return choice.Type == "" && choice.Name == ""
 }
 
+// MessageResponse is the Anthropic Messages response shape. Model, Content,
+// StopReason and StopSequence are always emitted (no omitempty): the strict
+// SDK Message schema requires id, type, role, content, model, stop_reason,
+// stop_sequence and usage to be present (empty string / empty array are
+// schema-valid).
 type MessageResponse struct {
 	ID           string         `json:"id"`
 	Type         string         `json:"type"`
 	Role         string         `json:"role"`
-	Model        string         `json:"model,omitempty"`
-	Content      []ContentBlock `json:"content,omitempty"`
-	StopReason   string         `json:"stop_reason,omitempty"`
-	StopSequence string         `json:"stop_sequence,omitempty"`
-	Usage        Usage          `json:"usage,omitempty"`
+	Model        string         `json:"model"`
+	Content      []ContentBlock `json:"content"`
+	StopReason   string         `json:"stop_reason"`
+	StopSequence string         `json:"stop_sequence"`
+	Usage        Usage          `json:"usage"`
 }
 
 type Usage struct {
@@ -124,12 +140,27 @@ type StreamEvent struct {
 }
 
 type StreamDelta struct {
-	Type        string `json:"type,omitempty"`
-	Text        string `json:"text,omitempty"`
-	Thinking    string `json:"thinking,omitempty"`
-	Signature   string `json:"signature,omitempty"`
-	PartialJSON string `json:"partial_json,omitempty"`
-	StopReason  string `json:"stop_reason,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Text         string `json:"text,omitempty"`
+	Thinking     string `json:"thinking,omitempty"`
+	Signature    string `json:"signature,omitempty"`
+	PartialJSON  string `json:"partial_json,omitempty"`
+	StopReason   string `json:"stop_reason,omitempty"`
+	StopSequence string `json:"stop_sequence,omitempty"`
+}
+
+// MarshalJSON shapes message_delta deltas to the strict SDK schema: when a
+// stop reason is present (message_delta kind), both stop_reason and
+// stop_sequence are always emitted. Content deltas keep the existing shape.
+func (d StreamDelta) MarshalJSON() ([]byte, error) {
+	if d.StopReason != "" {
+		return json.Marshal(struct {
+			StopReason   string `json:"stop_reason"`
+			StopSequence string `json:"stop_sequence"`
+		}{StopReason: d.StopReason, StopSequence: d.StopSequence})
+	}
+	type streamDeltaAlias StreamDelta
+	return json.Marshal(streamDeltaAlias(d))
 }
 
 type ErrorObject struct {

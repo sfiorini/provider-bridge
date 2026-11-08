@@ -233,9 +233,15 @@ func (a *ChatProviderAdapter) ToCoreResponseWithRequest(ctx context.Context, req
 		}
 	}
 
+	model := chatResp.Model
+	if model == "" && req != nil {
+		model = req.Model
+	}
+
 	coreResp := &format.CoreResponse{
 		ID:         chatResp.ID,
 		Status:     status,
+		Model:      model,
 		Messages:   messages,
 		StopReason: stopReason,
 	}
@@ -402,13 +408,16 @@ func (a *ChatProviderAdapter) ToCoreStreamWithRequest(ctx context.Context, req *
 						if !state.hasReasoning {
 							// Transition from premature text block to reasoning block.
 							state.hasReasoning = true
-							state.reasonIndex = state.blockIndex + 1
-							state.blockIndex = state.reasonIndex
+							// Close the premature text block at its current index before
+							// advancing, so the Done pairs with the open block instead of
+							// dangling after the reasoning block starts.
 							emit(format.CoreStreamEvent{
 								Type:        format.CoreContentBlockDone,
 								Index:       state.blockIndex,
 								ChoiceIndex: &ci,
 							})
+							state.reasonIndex = state.blockIndex + 1
+							state.blockIndex = state.reasonIndex
 							emit(format.CoreStreamEvent{
 								Type:        format.CoreContentBlockStarted,
 								Index:       state.reasonIndex,

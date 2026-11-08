@@ -794,7 +794,7 @@ proxy:
 func TestDefaultModelAliasFallsBackToProviderbridge(t *testing.T) {
 	cfg := config.Config{Routes: map[string]config.RouteEntry{
 		"provider-bridge": {Provider: "default", Model: "claude-test"},
-		"other":      {Provider: "default", Model: "claude-other"},
+		"other":           {Provider: "default", Model: "claude-other"},
 	}}
 	if got := cfg.DefaultModelAlias(); got != "provider-bridge" {
 		t.Fatalf("DefaultModelAlias() = %q", got)
