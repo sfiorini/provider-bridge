@@ -2875,12 +2875,10 @@ func prependCachedReasoningForChat(chatReq *chat.ChatRequest, sess *session.Sess
 				}
 			}
 		}
-		// Fallback: set empty reasoning_content to satisfy DeepSeek's requirement
-		// that the field is present on every assistant message. Only providers
-		// that actually require it (DeepSeek) tolerate the extra field; Mistral
-		// rejects `reasoning_content` on input messages with a 422.
+		// DeepSeek requires the field on assistant tool-call messages even
+		// when no reasoning was cached; we are already inside the DeepSeek-only
+		// path (non-DeepSeek providers returned early above).
 		if msg.ReasoningContent == "" && len(msg.ToolCalls) > 0 {
-			msg.ReasoningContent = ""
 			msg.EmitEmptyReasoningContent = true
 		}
 	}

@@ -41,7 +41,7 @@ These aliases resolve to the rows above (they carry no independent metadata).
 |---|---|---|---|---|---|---|---|---|
 | `opus` (Claude Code route) | mistral | zai-glm-5-3 | 1000000 | 131072 | text | verified (resolves to `zai-glm-5-3`) | see `zai-glm-5-3` | 2026-10-07 |
 | `sonnet` (Claude Code route) | deepseek | deepseek-v4-pro | 1000000 | 384000 | text | verified (resolves to `deepseek-v4-pro`) | see `deepseek-v4-pro` | 2026-10-07 |
-| `haiku` (Claude Code route) | zen | space-bunny-free | 128000 | — (undocumented) | text | conservative-unverified (resolves to `space-bunny-free`) | see `space-bunny-free` | 2026-10-07 |
+| `haiku` (Claude Code route) | zen | crouton-alpha-free | 128000 | — (undocumented) | text | conservative-unverified (resolves to `crouton-alpha-free`) | repointed 2026-11-08 (see Corrections) | 2026-11-08 |
 
 ## Removed from the deployment
 
