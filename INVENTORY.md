@@ -62,6 +62,7 @@ only `mistral-large-4` and `zai-glm-*`:
 
 **2026-11-08**
 - `space-bunny-free`: removed from the config graph + `config.yml` (dead upstream: OpenCode Zen returns 400 "Model is unavailable"); leftover model+offer debris from a crashed sync cleaned 2026-11-08; the route was already gone. Claude Code `haiku` repointed to `zen/crouton-alpha-free`.
+- **Anthropic inbound wire-shape fixes (commits 57e2bd2 + b76bbbc):** Claude Code (claude-cli 2.1.319, SDK 0.128.0) rejects the bridge's previously-tolerated sloppy SSE/Message shapes. Fixed: premature-text→reasoning block-close index (chat adapter), `index` now always present on content_block events, text block starts carry `"text":""`, Message always emits model/content/stop_reason/stop_sequence, message_delta carries both stop fields, `CoreResponse.Model` populated from the chat upstream, empty `CoreToolCallArgsDone` markers no longer emitted as `input_json_delta` without `partial_json`. Verified live: opus greeting + Bash tool loop + sonnet regression all clean.
 
 **2026-10-28**
 - `zai-glm-5-3-flash`, `deepseek-v4-1-flash-1017`: added (context window 1000000, max output 131072, `text, image`, served via the Mistral API; pricing in the `mistral/<model>` provider offers).
