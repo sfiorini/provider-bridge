@@ -1236,6 +1236,11 @@ func TestFromCoreRequest_ToolChoice(t *testing.T) {
 						t.Errorf("ToolChoice = %T, want map[string]any for named function", tc)
 					} else if obj["type"] != "function" {
 						t.Errorf("ToolChoice type = %v, want function", obj["type"])
+					} else {
+						fn, _ := obj["function"].(map[string]any)
+						if fn["name"] != tt.tname {
+							t.Errorf("ToolChoice function.name = %v, want %q", fn["name"], tt.tname)
+						}
 					}
 				}
 			case "any":

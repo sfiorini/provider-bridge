@@ -3,6 +3,7 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -64,6 +65,58 @@ func TestInboundToolHistoryToChatWire(t *testing.T) {
 	}
 	if chatReq.Messages[2].Role != "tool" || chatReq.Messages[2].ToolCallID != "tu_01" {
 		t.Fatalf("expected role=tool with tool_call_id tu_01, got role=%q tool_call_id=%q", chatReq.Messages[2].Role, chatReq.Messages[2].ToolCallID)
+	}
+}
+
+// TestToCoreRequest_ToolChoiceModeNameOnly pins the inbound tool_choice
+// translation: CoreToolChoice carries Mode (+Name for forced tools) but Raw
+// must stay nil. Raw is a lossless passthrough for inbounds whose clients
+// already speak the OpenAI wire shape; chat-completions upstreams consume it
+// verbatim, and the Anthropic shape ("type":"tool") would be rejected
+// (Mistral 422).
+func TestToCoreRequest_ToolChoiceModeNameOnly(t *testing.T) {
+	tests := []struct {
+		name     string
+		choice   ToolChoice
+		wantMode string
+		wantName string
+	}{
+		{"forced tool", ToolChoice{Type: "tool", Name: "get_weather"}, "required", "get_weather"},
+		{"any", ToolChoice{Type: "any"}, "any", ""},
+		{"auto", ToolChoice{Type: "auto"}, "auto", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inbound := fmt.Sprintf(`{
+				"model": "claude-sonnet-4-5",
+				"max_tokens": 100,
+				"tool_choice": {"type": %q, "name": %q},
+				"messages": [{"role": "user", "content": "hi"}]
+			}`, tt.choice.Type, tt.choice.Name)
+			req, err := ParseMessageRequest([]byte(inbound))
+			if err != nil {
+				t.Fatalf("ParseMessageRequest: %v", err)
+			}
+
+			client := NewAnthropicClientAdapter(format.CorePluginHooks{}.WithDefaults())
+			coreReq, err := client.ToCoreRequest(context.Background(), req)
+			if err != nil {
+				t.Fatalf("ToCoreRequest: %v", err)
+			}
+
+			if coreReq.ToolChoice == nil {
+				t.Fatal("ToolChoice is nil")
+			}
+			if coreReq.ToolChoice.Mode != tt.wantMode {
+				t.Errorf("Mode = %q, want %q", coreReq.ToolChoice.Mode, tt.wantMode)
+			}
+			if coreReq.ToolChoice.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", coreReq.ToolChoice.Name, tt.wantName)
+			}
+			if coreReq.ToolChoice.Raw != nil {
+				t.Errorf("Raw = %s, want nil (Anthropic-shaped Raw is forwarded verbatim by chat upstreams and rejected)", string(coreReq.ToolChoice.Raw))
+			}
+		})
 	}
 }
 

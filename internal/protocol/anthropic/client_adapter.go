@@ -249,11 +249,15 @@ func (a *AnthropicClientAdapter) ToCoreRequest(ctx context.Context, req any) (*f
 		case "none":
 			mode = "none"
 		}
-		raw, _ := json.Marshal(anthReq.ToolChoice)
+		// Raw must NOT be set here: OpenAI-protocol upstreams (chat
+		// completions) consume Raw verbatim, and the Anthropic shape
+		// ({"type":"tool","name":...}) would be rejected (Mistral 422).
+		// Mode+Name is the canonical translation the upstream adapters
+		// re-shape. Raw is reserved for inbounds whose clients already
+		// speak the OpenAI wire shape (openai Responses, chat-completions).
 		coreReq.ToolChoice = &format.CoreToolChoice{
 			Mode: mode,
 			Name: anthReq.ToolChoice.Name,
-			Raw:  raw,
 		}
 	}
 
