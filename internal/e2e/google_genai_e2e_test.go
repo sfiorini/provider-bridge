@@ -56,8 +56,8 @@ func TestGoogleGenaiE2E_TextRoundTrip(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{
-			"candidates": [{"index":0,"content":{"role":"model","parts":[{"text":"Hello from Gemini mock!"}]},"finish_reason":"STOP"}],
-			"usage_metadata": {"prompt_token_count":5,"candidates_token_count":10,"total_token_count":15}
+			"candidates": [{"index":0,"content":{"role":"model","parts":[{"text":"Hello from Gemini mock!"}]},"finishReason":"STOP"}],
+			"usageMetadata": {"promptTokenCount":5,"candidatesTokenCount":10,"totalTokenCount":15}
 		}`)
 	}))
 	defer mockSrv.Close()
@@ -163,8 +163,8 @@ func TestGoogleGenaiE2E_MultiTurnRoundTrip(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{
-			"candidates": [{"index":0,"content":{"role":"model","parts":[{"text":"I'm doing great, thanks!"}]},"finish_reason":"STOP"}],
-			"usage_metadata": {"prompt_token_count":20,"candidates_token_count":8,"total_token_count":28}
+			"candidates": [{"index":0,"content":{"role":"model","parts":[{"text":"I'm doing great, thanks!"}]},"finishReason":"STOP"}],
+			"usageMetadata": {"promptTokenCount":20,"candidatesTokenCount":8,"totalTokenCount":28}
 		}`)
 	}))
 	defer mockSrv.Close()
@@ -263,9 +263,14 @@ func TestGoogleGenaiE2E_ToolUseRoundTrip(t *testing.T) {
 	mockSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		// The mock must use the real Gemini REST wire shape (proto3 JSON,
+		// camelCase: functionCall, finishReason, usageMetadata). Go's JSON
+		// decoder does not match snake_case names against camelCase struct
+		// tags, so a snake_case mock silently parses to empty parts and
+		// drops the tool call (issue #12).
 		fmt.Fprint(w, `{
-			"candidates": [{"index":0,"content":{"role":"model","parts":[{"function_call":{"name":"get_weather","args":{"city":"Paris"}}}]},"finish_reason":"STOP"}],
-			"usage_metadata": {"prompt_token_count":15,"candidates_token_count":10,"total_token_count":25}
+			"candidates": [{"index":0,"content":{"role":"model","parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}]},"finishReason":"STOP"}],
+			"usageMetadata": {"promptTokenCount":15,"candidatesTokenCount":10,"totalTokenCount":25}
 		}`)
 	}))
 	defer mockSrv.Close()
