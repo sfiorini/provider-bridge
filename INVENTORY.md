@@ -17,7 +17,7 @@ own `/v1/models` metadata. Last checked 2026-10-07.
 
 ## Models
 
-`/v1/models` serves exactly these six (`data[]`, deduplicated against route aliases):
+`/v1/models` serves the models listed in the table below, plus any models added later by the zen sync (`data[]`, deduplicated against route aliases):
 
 | Slug (route aliases) | Provider | Upstream model | Context window | Max output | Input modalities | Status | Source | Checked |
 |---|---|---|---|---|---|---|---|---|
@@ -27,7 +27,7 @@ own `/v1/models` metadata. Last checked 2026-10-07.
 | `deepseek-v4-pro` | deepseek | deepseek-v4-pro | 1000000 | 384000 | text | verified | live `api.deepseek.com/v1/models` (`input_modalities: ["text"]`) | 2026-10-07 |
 | `deepseek-flash` (was `deepseek-v4-flash`) | deepseek | DeepSeek-V4.1-Flash | 1000000 | 384000 | **text, image** | corrected | live `api.deepseek.com/v1/models` → `input_modalities: ["text","image"]`, ctx 1048576, max_out 393216 (bridge rounds down to 1000000/384000); 64×64 red-PNG probe → "Red" | 2026-10-07 |
 | `space-bunny-free` | zen | space-bunny-free | 128000 | — (undocumented) | text | conservative-unverified | opencode.ai/docs/zen (no context length published) | 2026-10-07 |
-| `zai-glm-5-3-flash` | mistral | glm-5.3-flash | 1000000 | 131072 | text, image | verified | Mistral model announcement (GA 2026-10-22); config graph | 2026-10-28 |
+| `zai-glm-5-3-flash` | mistral | zai-glm-5-3-flash | 1000000 | 131072 | text, image | verified | Mistral model announcement (GA 2026-10-22); config graph | 2026-10-28 |
 | `deepseek-v4-1-flash-1017` | mistral | deepseek-v4-1-flash-1017 | 1000000 | 131072 | text, image | verified | Mistral model announcement (Public Preview 2026-10-28); API id `deepseek-v4-1-flash-1017` (docs slug `deepseek-v4-flash-1017` is wrong) | 2026-10-28 |
 
 **`mistral-large-4` operational notes:** accepts only `reasoning_effort: high` (low/medium/xhigh/max → HTTP 400) and returns block-array `[thinking, text]` content. Pricing is a public-preview launch discount: input $0.68/M, cached input $0.07/M, output $2.09/M.
