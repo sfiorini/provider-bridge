@@ -314,3 +314,71 @@ func TestFromCoreResponse_RequiredFields(t *testing.T) {
 		}
 	}
 }
+
+// TestFromCoreStream_EmptyToolCallArgsDoneEmitsNoPartialJson mirrors a live
+// Claude Code capture: the chat upstream adapter emits CoreToolCallArgsDone
+// with an EMPTY Delta as a lifecycle marker after the incremental
+// CoreToolCallArgsDelta events. An input_json_delta without partial_json is
+// malformed for the strict SDK, so the empty marker must emit nothing.
+func TestFromCoreStream_EmptyToolCallArgsDoneEmitsNoPartialJson(t *testing.T) {
+	adapter := NewAnthropicClientAdapter(format.CorePluginHooks{}.WithDefaults())
+	ci := 0
+	events := make(chan format.CoreStreamEvent, 16)
+	events <- format.CoreStreamEvent{Type: format.CoreEventCreated, Model: "mistral/zai-glm-5-3"}
+	events <- format.CoreStreamEvent{
+		Type: format.CoreContentBlockStarted, Index: 0, ChoiceIndex: &ci,
+		ContentBlock: &format.CoreContentBlock{Type: "text"},
+	}
+	events <- format.CoreStreamEvent{Type: format.CoreContentBlockDone, Index: 0, ChoiceIndex: &ci}
+	events <- format.CoreStreamEvent{
+		Type: format.CoreContentBlockStarted, Index: 1, ChoiceIndex: &ci,
+		ContentBlock: &format.CoreContentBlock{Type: "reasoning"},
+	}
+	events <- format.CoreStreamEvent{Type: format.CoreTextDelta, Index: 1, ChoiceIndex: &ci, Delta: "thinking"}
+	events <- format.CoreStreamEvent{
+		Type: format.CoreContentBlockStarted, Index: 2, ChoiceIndex: &ci,
+		ContentBlock: &format.CoreContentBlock{Type: "tool_use", ToolUseID: "tu_1", ToolName: "bash"},
+	}
+	events <- format.CoreStreamEvent{Type: format.CoreToolCallArgsDelta, Index: 2, ChoiceIndex: &ci, Delta: `{"cmd`}
+	events <- format.CoreStreamEvent{Type: format.CoreToolCallArgsDelta, Index: 2, ChoiceIndex: &ci, Delta: `":"ls"}`}
+	events <- format.CoreStreamEvent{Type: format.CoreContentBlockDone, Index: 1, ChoiceIndex: &ci}
+	// Empty lifecycle marker — the args were already streamed via deltas.
+	events <- format.CoreStreamEvent{Type: format.CoreToolCallArgsDone, Index: 2, ChoiceIndex: &ci, Delta: ""}
+	events <- format.CoreStreamEvent{Type: format.CoreContentBlockDone, Index: 2, ChoiceIndex: &ci, StopReason: "tool_use"}
+	events <- format.CoreStreamEvent{Type: format.CoreEventCompleted, Status: "completed", ChoiceIndex: &ci}
+	close(events)
+
+	coreReq := &format.CoreRequest{Model: "mistral/zai-glm-5-3"}
+	streamAny, err := adapter.FromCoreStream(context.Background(), coreReq, events)
+	if err != nil {
+		t.Fatalf("FromCoreStream: %v", err)
+	}
+	result, ok := streamAny.(*AnthropicStreamResult)
+	if !ok {
+		t.Fatalf("unexpected stream result type %T", streamAny)
+	}
+
+	var wire []string
+	for ev := range result.Chan() {
+		data, err := json.Marshal(ev)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire = append(wire, string(data))
+	}
+
+	for _, w := range wire {
+		if strings.Contains(w, `"input_json_delta"`) && !strings.Contains(w, `"partial_json"`) {
+			t.Errorf("emitted malformed input_json_delta without partial_json: %s", w)
+		}
+	}
+	var argsDeltas int
+	for _, w := range wire {
+		if strings.Contains(w, `"partial_json":"{\"cmd"`) || strings.Contains(w, `"partial_json":"\":\"ls\"}"`) {
+			argsDeltas++
+		}
+	}
+	if argsDeltas != 2 {
+		t.Errorf("expected both real args deltas on the wire, got %d; wire: %v", argsDeltas, wire)
+	}
+}

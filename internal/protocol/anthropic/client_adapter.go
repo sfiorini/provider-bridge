@@ -655,6 +655,12 @@ func (a *AnthropicClientAdapter) anthropicStreamLoop(
 			}
 
 		case format.CoreToolCallArgsDelta:
+			// Guard against empty deltas: an input_json_delta without
+			// partial_json is malformed for strict SDKs (StreamDelta's
+			// partial_json,omitempty drops the empty string).
+			if event.Delta == "" {
+				continue
+			}
 			send(StreamEvent{
 				Type:  "content_block_delta",
 				Index: event.Index,
@@ -662,8 +668,16 @@ func (a *AnthropicClientAdapter) anthropicStreamLoop(
 			})
 
 		case format.CoreToolCallArgsDone:
-			// The visual-path synthesizer emits complete tool arguments in
-			// one event instead of incremental deltas.
+			// This event plays two roles depending on the emitter:
+			//   - the chat upstream adapter emits it with an EMPTY Delta as a
+			//     lifecycle marker AFTER the incremental CoreToolCallArgsDelta
+			//     events — nothing to send, and an input_json_delta with an
+			//     empty partial_json would be malformed for strict SDKs;
+			//   - the visual-path synthesizer emits complete tool arguments
+			//     here in one event instead of incremental deltas.
+			if event.Delta == "" {
+				continue
+			}
 			send(StreamEvent{
 				Type:  "content_block_delta",
 				Index: event.Index,
