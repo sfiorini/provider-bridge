@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-08
+
+### Fixed
+
+- Server: cached `reasoning_content` replay on replayed assistant tool-call
+  messages is now gated to the DeepSeek provider (`prependCachedReasoningForChat`
+  takes the provider key and returns early for non-DeepSeek). Other OpenAI-chat
+  providers reject the field — Mistral returns 422 `extra_forbidden`, breaking
+  every multi-turn tool conversation on `/v1/messages` (Claude Code) and
+  `/v1/responses` (Codex). DeepSeek's deliberate replay is preserved.
+- Anthropic inbound: the SSE/Message wire shapes now satisfy strict SDK clients
+  (Claude Code claude-cli 2.1.319 / @anthropic-ai/sdk 0.128.0): content-block
+  close indices are sequenced correctly on the thinking-first path (the
+  premature text block closes at its own index), `index` is always present on
+  content_block events, text block starts carry `"text":""`, the Message
+  object always emits `model`/`content`/`stop_reason`/`stop_sequence`,
+  message_delta carries both stop fields, `CoreResponse.Model` is populated
+  from the chat upstream, and empty tool-args lifecycle markers are no longer
+  emitted as `input_json_delta` events without `partial_json`.
+
 ## [0.2.3] - 2026-10-08
 
 ### Changed
