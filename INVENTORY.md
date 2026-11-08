@@ -26,7 +26,6 @@ own `/v1/models` metadata. Last checked 2026-10-07.
 | `zai-glm-5-2` | mistral | glm-5.2 | 1000000 | 131072 | text | verified | docs.z.ai/guides/llm/glm-5.2 (deprecated by Mistral 2026-09-29) | 2026-10-07 |
 | `deepseek-v4-pro` | deepseek | deepseek-v4-pro | 1000000 | 384000 | text | verified | live `api.deepseek.com/v1/models` (`input_modalities: ["text"]`) | 2026-10-07 |
 | `deepseek-flash` (was `deepseek-v4-flash`) | deepseek | DeepSeek-V4.1-Flash | 1000000 | 384000 | **text, image** | corrected | live `api.deepseek.com/v1/models` → `input_modalities: ["text","image"]`, ctx 1048576, max_out 393216 (bridge rounds down to 1000000/384000); 64×64 red-PNG probe → "Red" | 2026-10-07 |
-| `space-bunny-free` | zen | space-bunny-free | 128000 | — (undocumented) | text | conservative-unverified | opencode.ai/docs/zen (no context length published) | 2026-10-07 |
 | `zai-glm-5-3-flash` | mistral | zai-glm-5-3-flash | 1000000 | 131072 | text, image | verified | Mistral model announcement (GA 2026-10-22); config graph | 2026-10-28 |
 | `deepseek-v4-1-flash-1017` | mistral | deepseek-v4-1-flash-1017 | 1000000 | 131072 | text, image | verified | Mistral model announcement (Public Preview 2026-10-28); API id `deepseek-v4-1-flash-1017` (docs slug `deepseek-v4-flash-1017` is wrong) | 2026-10-28 |
 
@@ -60,6 +59,9 @@ only `mistral-large-4` and `zai-glm-*`:
 | `kimi-for-coding` | never deployed | appears in `config.example.yml` only |
 
 ## Corrections applied
+
+**2026-11-08**
+- `space-bunny-free`: removed from the config graph + `config.yml` (dead upstream: OpenCode Zen returns 400 "Model is unavailable"); leftover model+offer debris from a crashed sync cleaned 2026-11-08; the route was already gone. Claude Code `haiku` repointed to `zen/crouton-alpha-free`.
 
 **2026-10-28**
 - `zai-glm-5-3-flash`, `deepseek-v4-1-flash-1017`: added (context window 1000000, max output 131072, `text, image`, served via the Mistral API; pricing in the `mistral/<model>` provider offers).
