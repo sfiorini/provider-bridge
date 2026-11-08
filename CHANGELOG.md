@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-08
+
+### Fixed
+
+- Anthropic inbound: a forced `tool_choice` (e.g. `{"type":"tool","name":…}`)
+  no longer reaches OpenAI-chat upstreams verbatim in the Anthropic shape
+  (Mistral: 422). The inbound adapter no longer stuffs the Anthropic-shaped
+  choice into `CoreToolChoice.Raw` — which OpenAI-protocol upstreams consume
+  verbatim — and lets the canonical Mode/Name translation drive the upstream
+  re-shaping. The OpenAI-shaped `Raw` passthrough from the Responses and Chat
+  Completions inbounds is unchanged.
+
 ## [0.2.4] - 2026-11-08
 
 ### Fixed
