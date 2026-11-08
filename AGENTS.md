@@ -223,7 +223,9 @@ pick the right HTTP client for the provider.
   streams. `wrapWithVisual` returns nil unless the model has visual config.
 - **DeepSeek reasoning replay**: reasoning is cached per session
   (`cacheReasoningForChat`) and prepended to follow-up requests
-  (`prependCachedReasoningForChat`/`prependCachedThinking`).
+  (`prependCachedReasoningForChat`/`prependCachedThinking`). DeepSeek-only:
+  other providers reject `reasoning_content` on input messages (Mistral 422
+  `extra_forbidden`).
 - **Config graph**: SQLite (`data/provider-bridge.db`, `config_store_*` tables) is
   the live source of truth, managed via `/api/v1/config/graph`
   (`internal/service/configgraph`); `config.yml` is the seed and mirror

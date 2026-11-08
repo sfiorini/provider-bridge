@@ -292,7 +292,7 @@ func (s *Server) executeChatUpstream(
 	}
 
 	if s.pluginRegistry != nil && sess != nil {
-		prependCachedReasoningForChat(chatReq, sess, outcome.Preferred.ProviderKey == "deepseek")
+		prependCachedReasoningForChat(chatReq, sess, outcome.Preferred.ProviderKey)
 	}
 
 	finalizeChat := func(_ context.Context, upstream any) (any, error) {
@@ -301,7 +301,7 @@ func (s *Server) executeChatUpstream(
 			return nil, fmt.Errorf("finalizeChat: expected *chat.ChatRequest, got %T", upstream)
 		}
 		if s.pluginRegistry != nil && sess != nil {
-			prependCachedReasoningForChat(req, sess, outcome.Preferred.ProviderKey == "deepseek")
+			prependCachedReasoningForChat(req, sess, outcome.Preferred.ProviderKey)
 		}
 		return req, nil
 	}

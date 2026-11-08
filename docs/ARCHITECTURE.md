@@ -329,9 +329,10 @@ container restart. See [WEB-SEARCH.md](WEB-SEARCH.md).
 
 Reasoning returned by DeepSeek-compatible upstreams is cached per session
 (`cacheReasoningForChat`) and prepended to follow-up requests
-(`prependCachedReasoningForChat` / `prependCachedThinking`). The empty-
-`reasoning_content` replay is gated on providers that require it — Mistral
-rejects the field entirely.
+(`prependCachedReasoningForChat` / `prependCachedThinking`). Both the cached
+replay and the empty-`reasoning_content` emission are DeepSeek-only — Mistral
+and other OpenAI-chat providers reject the field entirely (422
+`extra_forbidden`).
 
 ### Session keying
 

@@ -9,6 +9,7 @@ import (
 	"providerbridge/internal/format"
 	"providerbridge/internal/protocol/anthropic"
 	openai "providerbridge/internal/protocol/openai"
+	chat "providerbridge/internal/protocol/chat"
 	"providerbridge/internal/service/provider"
 	"providerbridge/internal/service/stats"
 	"providerbridge/internal/session"
@@ -154,6 +155,95 @@ func TestPrependCachedThinkingChecksAllToolUseBlocks(t *testing.T) {
 	head := req.Messages[0].Content[0]
 	if head.Type != "thinking" || head.Thinking != "replayed" || head.Signature != "sig-hit" {
 		t.Fatalf("cached thinking block mismatch, got %+v", head)
+	}
+}
+
+func TestPrependCachedReasoningForChatSkipsNonDeepSeekProvider(t *testing.T) {
+	sess := session.New()
+	state := deepseekv4.NewState()
+	state.RememberForToolCalls(
+		[]string{"call-1"},
+		format.CoreContentBlock{
+			Type:          "reasoning",
+			ReasoningText: "cached thinking",
+		},
+	)
+	sess.InitExtensions(map[string]any{
+		"deepseek_v4": state,
+	})
+
+	req := &chat.ChatRequest{
+		Messages: []chat.ChatMessage{{
+			Role: "assistant",
+			ToolCalls: []chat.ToolCall{
+				{ID: "call-1", Type: "function"},
+			},
+		}},
+	}
+
+	prependCachedReasoningForChat(req, sess, "mistral")
+
+	if req.Messages[0].ReasoningContent != "" {
+		t.Fatalf("non-DeepSeek provider must not receive cached reasoning, got %q", req.Messages[0].ReasoningContent)
+	}
+	if req.Messages[0].EmitEmptyReasoningContent {
+		t.Fatal("non-DeepSeek provider must not emit empty reasoning_content")
+	}
+}
+
+func TestPrependCachedReasoningForChatReplaysForDeepSeek(t *testing.T) {
+	sess := session.New()
+	state := deepseekv4.NewState()
+	state.RememberForToolCalls(
+		[]string{"call-1"},
+		format.CoreContentBlock{
+			Type:          "reasoning",
+			ReasoningText: "cached thinking",
+		},
+	)
+	sess.InitExtensions(map[string]any{
+		"deepseek_v4": state,
+	})
+
+	req := &chat.ChatRequest{
+		Messages: []chat.ChatMessage{{
+			Role: "assistant",
+			ToolCalls: []chat.ToolCall{
+				{ID: "call-1", Type: "function"},
+			},
+		}},
+	}
+
+	prependCachedReasoningForChat(req, sess, "deepseek")
+
+	if req.Messages[0].ReasoningContent != "cached thinking" {
+		t.Fatalf("DeepSeek should replay cached reasoning, got %q", req.Messages[0].ReasoningContent)
+	}
+}
+
+func TestPrependCachedReasoningForChatEmitsEmptyForDeepSeek(t *testing.T) {
+	sess := session.New()
+	state := deepseekv4.NewState()
+	sess.InitExtensions(map[string]any{
+		"deepseek_v4": state,
+	})
+
+	req := &chat.ChatRequest{
+		Messages: []chat.ChatMessage{{
+			Role: "assistant",
+			ToolCalls: []chat.ToolCall{
+				{ID: "call-none", Type: "function"},
+			},
+		}},
+	}
+
+	prependCachedReasoningForChat(req, sess, "deepseek")
+
+	if !req.Messages[0].EmitEmptyReasoningContent {
+		t.Fatal("DeepSeek assistant tool-call message without cached reasoning must emit empty reasoning_content")
+	}
+	if req.Messages[0].ReasoningContent != "" {
+		t.Fatalf("emitted reasoning must be empty string, got %q", req.Messages[0].ReasoningContent)
 	}
 }
 
